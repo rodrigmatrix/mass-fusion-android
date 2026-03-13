@@ -116,4 +116,15 @@
         android:visibility="gone"
         android:elevation="9999dp" />
 
+    <!-- Loading Video Overlay -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/loadingVideoOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:visibility="gone"
+        android:elevation="10000dp"
+        app:use_controller="false"
+        app:resize_mode="fill" />
+
 </merge>
