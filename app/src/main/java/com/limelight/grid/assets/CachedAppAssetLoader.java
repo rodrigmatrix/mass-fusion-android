@@ -62,8 +62,8 @@ public class CachedAppAssetLoader {
     private final Bitmap noAppImageBitmap;
 
     public CachedAppAssetLoader(ComputerDetails computer, double scalingDivider,
-                                NetworkAssetLoader networkLoader, MemoryAssetLoader memoryLoader,
-                                DiskAssetLoader diskLoader, Bitmap noAppImageBitmap) {
+            NetworkAssetLoader networkLoader, MemoryAssetLoader memoryLoader,
+            DiskAssetLoader diskLoader, Bitmap noAppImageBitmap) {
         this.computer = computer;
         this.scalingDivider = scalingDivider;
         this.networkLoader = networkLoader;
@@ -112,7 +112,8 @@ public class CachedAppAssetLoader {
                 // Close the network input stream
                 try {
                     in.close();
-                } catch (IOException ignored) {}
+                } catch (IOException ignored) {
+                }
 
                 // If there's a task associated with this load, we should return the bitmap
                 if (task != null) {
@@ -121,8 +122,7 @@ public class CachedAppAssetLoader {
                     if (bmp != null) {
                         return bmp;
                     }
-                }
-                else {
+                } else {
                     // Otherwise it's a background load and we return nothing
                     return null;
                 }
@@ -199,7 +199,8 @@ public class CachedAppAssetLoader {
             final ImageView imageView = imageViewRef.get();
             final TextView textView = textViewRef.get();
             if (getLoaderTask(imageView) == this) {
-                // Set off another loader task on the network executor. This time our AsyncDrawable
+                // Set off another loader task on the network executor. This time our
+                // AsyncDrawable
                 // will use the app image placeholder bitmap, rather than an empty bitmap.
                 LoaderTask task = new LoaderTask(imageView, textView, false);
                 AsyncDrawable asyncDrawable = new AsyncDrawable(imageView.getResources(), noAppImageBitmap, task);
@@ -228,27 +229,31 @@ public class CachedAppAssetLoader {
 
                     if (imageView.getVisibility() == View.VISIBLE) {
                         // Fade out the placeholder first
-                        Animation fadeOutAnimation = AnimationUtils.loadAnimation(imageView.getContext(), R.anim.boxart_fadeout);
+                        Animation fadeOutAnimation = AnimationUtils.loadAnimation(imageView.getContext(),
+                                R.anim.boxart_fadeout);
                         fadeOutAnimation.setAnimationListener(new Animation.AnimationListener() {
                             @Override
-                            public void onAnimationStart(Animation animation) {}
+                            public void onAnimationStart(Animation animation) {
+                            }
 
                             @Override
                             public void onAnimationEnd(Animation animation) {
                                 // Fade in the new box art
                                 imageView.setImageBitmap(bitmap.bitmap);
-                                imageView.startAnimation(AnimationUtils.loadAnimation(imageView.getContext(), R.anim.boxart_fadein));
+                                imageView.startAnimation(
+                                        AnimationUtils.loadAnimation(imageView.getContext(), R.anim.boxart_fadein));
                             }
 
                             @Override
-                            public void onAnimationRepeat(Animation animation) {}
+                            public void onAnimationRepeat(Animation animation) {
+                            }
                         });
                         imageView.startAnimation(fadeOutAnimation);
-                    }
-                    else {
+                    } else {
                         // View is invisible already, so just fade in the new art
                         imageView.setImageBitmap(bitmap.bitmap);
-                        imageView.startAnimation(AnimationUtils.loadAnimation(imageView.getContext(), R.anim.boxart_fadein));
+                        imageView.startAnimation(
+                                AnimationUtils.loadAnimation(imageView.getContext(), R.anim.boxart_fadein));
                         imageView.setVisibility(View.VISIBLE);
                     }
                 }
@@ -260,7 +265,7 @@ public class CachedAppAssetLoader {
         private final WeakReference<LoaderTask> loaderTaskReference;
 
         public AsyncDrawable(Resources res, Bitmap bitmap,
-                             LoaderTask loaderTask) {
+                LoaderTask loaderTask) {
             super(res, bitmap);
             loaderTaskReference = new WeakReference<>(loaderTask);
         }
@@ -348,33 +353,33 @@ public class CachedAppAssetLoader {
         // Always set the name text so we have it if needed later
         textView.setText(app.getAppName());
 
+        if (app.getAppName().equals("Virtual Display") || app.getAppName().equals("Desktop")) {
+            imgView.setVisibility(View.VISIBLE);
+            imgView.setImageBitmap(BitmapFactory.decodeResource(imgView.getResources(), R.drawable.ic_windows));
+            textView.setVisibility(View.VISIBLE);
+            return true;
+        }
+
         // First, try the memory cache in the current context
         ScaledBitmap bmp = memoryLoader.loadBitmapFromCache(tuple);
         if (bmp != null) {
             // Show the bitmap immediately
             imgView.setVisibility(View.VISIBLE);
-            if (app.getAppName().equals("Virtual Display") || app.getAppName().equals("Desktop")) {
-                imgView.setImageBitmap(BitmapFactory.decodeResource(imgView.getResources(), R.drawable.ic_windows));
-            } else {
-                imgView.setImageBitmap(bmp.bitmap);
-            }
+            imgView.setImageBitmap(bmp.bitmap);
 
             // Show the text if it's a placeholder bitmap
             textView.setVisibility(isBitmapPlaceholder(bmp) ? View.VISIBLE : View.GONE);
             return true;
         }
 
-        // If it's not in memory, create an async task to load it. This task will be attached
+        // If it's not in memory, create an async task to load it. This task will be
+        // attached
         // via AsyncDrawable to this view.
         final LoaderTask task = new LoaderTask(imgView, textView, true);
         final AsyncDrawable asyncDrawable = new AsyncDrawable(imgView.getResources(), placeholderBitmap, task);
         textView.setVisibility(View.INVISIBLE);
         imgView.setVisibility(View.INVISIBLE);
-        if (app.getAppName().equals("Virtual Display") || app.getAppName().equals("Desktop")) {
-            imgView.setImageBitmap(BitmapFactory.decodeResource(imgView.getResources(), R.drawable.ic_windows));
-        } else {
-            imgView.setImageDrawable(asyncDrawable);
-        }
+        imgView.setImageDrawable(asyncDrawable);
 
         // Run the task on our foreground executor
         task.executeOnExecutor(foregroundExecutor, tuple);
@@ -402,7 +407,7 @@ public class CachedAppAssetLoader {
 
         @Override
         public String toString() {
-            return "("+computer.uuid+", "+app.getAppId()+")";
+            return "(" + computer.uuid + ", " + app.getAppId() + ")";
         }
     }
 }

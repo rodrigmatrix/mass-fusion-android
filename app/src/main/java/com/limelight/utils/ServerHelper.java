@@ -35,9 +35,10 @@ import java.util.ArrayList;
 public class ServerHelper {
     public static final String CONNECTION_TEST_SERVER = "android.conntest.moonlight-stream.org";
 
-    public static ComputerDetails.AddressTuple getCurrentAddressFromComputer(ComputerDetails computer) throws IOException {
+    public static ComputerDetails.AddressTuple getCurrentAddressFromComputer(ComputerDetails computer)
+            throws IOException {
         if (computer.activeAddress == null) {
-            throw new IOException("No active address for "+computer.name);
+            throw new IOException("No active address for " + computer.name);
         }
         return computer.activeAddress;
     }
@@ -56,17 +57,19 @@ public class ServerHelper {
         i.putExtra(AppView.UUID_EXTRA, computer.uuid);
         i.putExtra(Game.EXTRA_APP_NAME, app.getAppName());
         i.putExtra(Game.EXTRA_APP_UUID, app.getAppUUID());
-        i.putExtra(Game.EXTRA_APP_ID, ""+app.getAppId());
+        i.putExtra(Game.EXTRA_APP_ID, "" + app.getAppId());
         i.putExtra(Game.EXTRA_APP_HDR, app.isHdrSupported());
         i.setAction(Intent.ACTION_DEFAULT);
         return i;
     }
+
     public static Display getActiveDisplay(Context context, PreferenceConfiguration prefs) {
         Display secondary = getSecondaryDisplay(context);
         if (secondary != null && (prefs.enableFullExDisplay)) {
             return secondary;
         } else {
-            return ((DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE)).getDisplay(Display.DEFAULT_DISPLAY);
+            return ((DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE))
+                    .getDisplay(Display.DEFAULT_DISPLAY);
         }
     }
 
@@ -91,17 +94,19 @@ public class ServerHelper {
     }
 
     public static Intent createStartIntent(Activity parent, NvApp app, ComputerDetails computer,
-                                           ComputerManagerService.ComputerManagerBinder managerBinder,
-                                           boolean withVDisplay) {
+            ComputerManagerService.ComputerManagerBinder managerBinder,
+            boolean withVDisplay) {
         Intent gameIntent = null;
         PreferenceConfiguration prefConfig = PreferenceConfiguration.readPreferences(parent);
         // Try to add secondary DisplayContext if supported and connected
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && prefConfig.enableFullExDisplay && getSecondaryDisplay(parent) != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && prefConfig.enableFullExDisplay
+                && getSecondaryDisplay(parent) != null) {
             Context displayContext = parent.createDisplayContext(getSecondaryDisplay(parent)); // use secondary display
             gameIntent = new Intent(displayContext, Game.class);
             gameIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         }
-        if(gameIntent == null) gameIntent = new Intent(parent, Game.class);
+        if (gameIntent == null)
+            gameIntent = new Intent(parent, Game.class);
         gameIntent.putExtra(Game.EXTRA_HOST, computer.activeAddress.address);
         gameIntent.putExtra(Game.EXTRA_PORT, computer.activeAddress.port);
         gameIntent.putExtra(Game.EXTRA_HTTPS_PORT, computer.httpsPort);
@@ -143,14 +148,29 @@ public class ServerHelper {
             NvApp app,
             ComputerDetails computer,
             ComputerManagerService.ComputerManagerBinder managerBinder,
-            boolean withVDisplay
-    ) {
+            boolean withVDisplay) {
         if (computer.state == ComputerDetails.State.OFFLINE || computer.activeAddress == null) {
             Toast.makeText(parent, parent.getString(R.string.pair_pc_offline), Toast.LENGTH_SHORT).show();
             return;
         }
 
         Intent intent = createStartIntent(parent, app, computer, managerBinder, withVDisplay);
+        parent.startActivity(intent);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public static void doStartPairControllers(
+            Activity parent,
+            NvApp app,
+            ComputerDetails computer,
+            ComputerManagerService.ComputerManagerBinder managerBinder) {
+        if (computer.state == ComputerDetails.State.OFFLINE || computer.activeAddress == null) {
+            Toast.makeText(parent, parent.getString(R.string.pair_pc_offline), Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Intent intent = createStartIntent(parent, app, computer, managerBinder, false);
+        intent.putExtra(Game.EXTRA_PAIR_CONTROLLERS, true);
         parent.startActivity(intent);
     }
 
@@ -169,11 +189,9 @@ public class ServerHelper {
                 String dialogSummary;
                 if (ret == MoonBridge.ML_TEST_RESULT_INCONCLUSIVE) {
                     dialogSummary = parent.getResources().getString(R.string.nettest_text_inconclusive);
-                }
-                else if (ret == 0) {
+                } else if (ret == 0) {
                     dialogSummary = parent.getResources().getString(R.string.nettest_text_success);
-                }
-                else {
+                } else {
                     dialogSummary = parent.getResources().getString(R.string.nettest_text_failure);
                     dialogSummary += MoonBridge.stringifyPortFlags(ret, "\n");
                 }
@@ -187,12 +205,13 @@ public class ServerHelper {
     }
 
     public static void doQuit(final Activity parent,
-                              final NvHTTP httpConn,
-                              final String appName,
-                              final Runnable onComplete,
-                              final Runnable onFail
-    ) {
-        parent.runOnUiThread(() -> Toast.makeText(parent, parent.getResources().getString(R.string.applist_quit_app) + " " + appName + "...", Toast.LENGTH_SHORT).show());
+            final NvHTTP httpConn,
+            final String appName,
+            final Runnable onComplete,
+            final Runnable onFail) {
+        parent.runOnUiThread(() -> Toast.makeText(parent,
+                parent.getResources().getString(R.string.applist_quit_app) + " " + appName + "...", Toast.LENGTH_SHORT)
+                .show());
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -209,9 +228,8 @@ public class ServerHelper {
                     if (e.getErrorCode() == 599) {
                         message = "This session wasn't started by this device," +
                                 " so it cannot be quit. End streaming on the original " +
-                                "device or the PC itself. (Error code: "+e.getErrorCode()+")";
-                    }
-                    else {
+                                "device or the PC itself. (Error code: " + e.getErrorCode() + ")";
+                    } else {
                         message = e.getMessage();
                     }
                 } catch (UnknownHostException e) {
@@ -244,26 +262,23 @@ public class ServerHelper {
     }
 
     public static void doQuit(final Activity parent,
-                              final ComputerDetails computer,
-                              final NvApp app,
-                              final ComputerManagerService.ComputerManagerBinder managerBinder,
-                              final Runnable onComplete
-    ) {
+            final ComputerDetails computer,
+            final NvApp app,
+            final ComputerManagerService.ComputerManagerBinder managerBinder,
+            final Runnable onComplete) {
         try {
             NvHTTP httpConn = new NvHTTP(
                     ServerHelper.getCurrentAddressFromComputer(computer),
                     computer.httpsPort,
                     managerBinder.getUniqueId(),
                     computer.serverCert,
-                    PlatformBinding.getCryptoProvider(parent)
-            );
+                    PlatformBinding.getCryptoProvider(parent));
             doQuit(
                     parent,
                     httpConn,
                     app.getAppName(),
                     onComplete,
-                    null
-            );
+                    null);
         } catch (Exception e) {
             e.printStackTrace();
 

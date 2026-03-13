@@ -106,6 +106,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationManagerCompat;
@@ -234,6 +235,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     private WifiManager.WifiLock highPerfWifiLock;
     private WifiManager.WifiLock lowLatencyWifiLock;
+    private android.os.PowerManager.WakeLock inputOnlyWakeLock;
+    private boolean pairControllersMode = false;
 
     private boolean connectedToUsbDriverService = false;
     private ServiceConnection usbDriverServiceConnection = new ServiceConnection() {
@@ -266,6 +269,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     public static final String EXTRA_VDISPLAY = "VirtualDisplay";
     public static final String EXTRA_SERVER_COMMANDS = "ServerCommands";
     public static final String EXTRA_DISPLAY_ID = "DisplayID";
+    public static final String EXTRA_PAIR_CONTROLLERS = "PairControllers";
 
     public static final String CLIPBOARD_IDENTIFIER = "ArtemisStreaming";
 
@@ -567,6 +571,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         appId = Game.this.getIntent().getIntExtra(EXTRA_APP_ID, StreamConfiguration.INVALID_APP_ID);
         uniqueId = Game.this.getIntent().getStringExtra(EXTRA_UNIQUEID);
         vDisplay = Game.this.getIntent().getBooleanExtra(EXTRA_VDISPLAY, false);
+        pairControllersMode = Game.this.getIntent().getBooleanExtra(EXTRA_PAIR_CONTROLLERS, false);
         serverCommands = Game.this.getIntent().getStringArrayListExtra(EXTRA_SERVER_COMMANDS);
         boolean appSupportsHdr = Game.this.getIntent().getBooleanExtra(EXTRA_APP_HDR, false);
         byte[] derCertData = Game.this.getIntent().getByteArrayExtra(EXTRA_SERVER_CERT);
@@ -828,11 +833,19 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     prefConfig.trackpadSensitivityX, prefConfig.trackpadSensitivityY);
         }
 
-        if (Objects.equals(appUUID, NvApp.REMOTE_INPUT_UUID)) {
+        if (pairControllersMode || Objects.equals(appUUID, NvApp.REMOTE_INPUT_UUID)) {
             // Force trackpad mode since we won't see anything on the screen
             isInputOnly = true;
             allowChangeMouseMode = false;
             applyMouseMode(2);
+
+            // Show the controller background overlay
+            if (pairControllersMode) {
+                ImageView overlay = findViewById(R.id.pairControllersOverlay);
+                if (overlay != null) {
+                    overlay.setVisibility(View.VISIBLE);
+                }
+            }
         } else {
             if (prefConfig.enableFullExDisplay && onExternelDisplay) {
                 requestFocusToExternalDisplayControl(this);
@@ -1738,6 +1751,16 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     protected void onDestroy() {
         super.onDestroy();
 
+        // Release pair controllers wake lock if held
+        if (inputOnlyWakeLock != null && inputOnlyWakeLock.isHeld()) {
+            inputOnlyWakeLock.release();
+        }
+
+        // If pair controllers mode skipped onStop teardown, stop connection now
+        if (pairControllersMode && conn != null) {
+            stopConnection();
+        }
+
         instance = null;
         timerHandler.removeCallbacksAndMessages(null);
 
@@ -1813,6 +1836,20 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         if (keyBoardLayoutController != null) {
             keyBoardLayoutController.hide();
+        }
+
+        // In pair controllers mode, keep the connection alive when backgrounded
+        if (pairControllersMode) {
+            if (inputOnlyWakeLock == null) {
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+                inputOnlyWakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                        "Moonlight:PairControllersWakeLock");
+                inputOnlyWakeLock.setReferenceCounted(false);
+            }
+            if (!inputOnlyWakeLock.isHeld()) {
+                inputOnlyWakeLock.acquire();
+            }
+            return;
         }
 
         if (conn != null) {
@@ -3922,6 +3959,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
 
         if (attemptedConnection) {
+            // In pair controllers mode, don't stop the connection when the surface is
+            // destroyed
+            // since we're not rendering any video
+            if (pairControllersMode) {
+                return;
+            }
+
             // Let the decoder know immediately that the surface is gone
             decoderRenderer.prepareForStop();
 

@@ -127,4 +127,14 @@
         app:use_controller="false"
         app:resize_mode="fill" />
 
+    <!-- Pair Controllers Background Overlay -->
+    <ImageView
+        android:id="@+id/pairControllersOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:src="@drawable/bg_pair_controllers"
+        android:visibility="gone"
+        android:elevation="10000dp" />
+
 </merge>

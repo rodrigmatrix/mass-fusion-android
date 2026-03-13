@@ -81,6 +81,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
     private final static int HIDE_APP_ID = 8;
     private final static int START_WITH_VDISPLAY = 20;
     private final static int START_WITH_QUIT_VDISPLAY = 21;
+    private final static int PAIR_CONTROLLERS_ID = 22;
 
     public final static String HIDDEN_APPS_PREF_FILENAME = "HiddenApps";
 
@@ -92,8 +93,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
     private ComputerManagerService.ComputerManagerBinder managerBinder;
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         public void onServiceConnected(ComponentName className, IBinder binder) {
-            final ComputerManagerService.ComputerManagerBinder localBinder =
-                    ((ComputerManagerService.ComputerManagerBinder)binder);
+            final ComputerManagerService.ComputerManagerBinder localBinder = ((ComputerManagerService.ComputerManagerBinder) binder);
 
             // Wait in a separate thread to avoid stalling the UI
             new Thread() {
@@ -110,7 +110,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                     }
 
                     // Add a launcher shortcut for this PC (forced, since this is user interaction)
-                    shortcutHelper.createAppViewShortcut(computer, true, getIntent().getBooleanExtra(NEW_PAIR_EXTRA, false));
+                    shortcutHelper.createAppViewShortcut(computer, true,
+                            getIntent().getBooleanExtra(NEW_PAIR_EXTRA, false));
                     shortcutHelper.reportComputerShortcutUsed(computer);
 
                     try {
@@ -225,7 +226,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                 }
 
                 // Close immediately if the PC is no longer paired
-                if (details.state == ComputerDetails.State.ONLINE && details.pairState != PairingManager.PairState.PAIRED) {
+                if (details.state == ComputerDetails.State.ONLINE
+                        && details.pairState != PairingManager.PairState.PAIRED) {
                     AppView.this.runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -315,7 +317,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
 
         // Setup the profiles button
         findViewById(R.id.profilesButton)
-            .setOnClickListener(v -> startActivity(new Intent(this, ProfilesActivity.class)));
+                .setOnClickListener(v -> startActivity(new Intent(this, ProfilesActivity.class)));
 
         showHiddenApps = getIntent().getBooleanExtra(SHOW_HIDDEN_APPS_EXTRA, false);
         uuidString = getIntent().getStringExtra(UUID_EXTRA);
@@ -356,13 +358,14 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
     private void populateAppGridWithCache() {
         try {
             // Try to load from cache
-            lastRawApplist = CacheHelper.readInputStreamToString(CacheHelper.openCacheFileForInput(getCacheDir(), "applist", uuidString));
+            lastRawApplist = CacheHelper
+                    .readInputStreamToString(CacheHelper.openCacheFileForInput(getCacheDir(), "applist", uuidString));
             List<NvApp> applist = NvHTTP.getAppListByReader(new StringReader(lastRawApplist));
             updateUiWithAppList(applist);
             LimeLog.info("Loaded applist from cache");
         } catch (IOException | XmlPullParserException e) {
             if (lastRawApplist != null) {
-                LimeLog.warning("Saved applist corrupted: "+lastRawApplist);
+                LimeLog.warning("Saved applist corrupted: " + lastRawApplist);
                 e.printStackTrace();
             }
             LimeLog.info("Loading applist from the network");
@@ -372,7 +375,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
     }
 
     private void loadAppsBlocking() {
-        blockingLoadSpinner = SpinnerDialog.displayDialog(this, getResources().getString(R.string.applist_refresh_title),
+        blockingLoadSpinner = SpinnerDialog.displayDialog(this,
+                getResources().getString(R.string.applist_refresh_title),
                 getResources().getString(R.string.applist_refresh_msg), true);
     }
 
@@ -430,7 +434,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                 Uri uri = data.getData();
                 ShortcutHelper.writeArtFileToUri(this, uri);
             } else {
-                // Clear the content if the user cancelled or if there was an error before this point
+                // Clear the content if the user cancelled or if there was an error before this
+                // point
                 ShortcutHelper.artFileContentToExport = null;
                 // Show "File export cancelled." toast only if the user explicitly cancelled.
                 if (resultCode == Activity.RESULT_CANCELED) {
@@ -451,29 +456,38 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
 
         if (lastRunningAppId == 0) {
             if (prefConfig.useVirtualDisplay) {
-                menu.add(Menu.NONE, START_OR_RESUME_ID, 1, getResources().getString(R.string.applist_menu_start_primarydisplay));
+                menu.add(Menu.NONE, START_OR_RESUME_ID, 1,
+                        getResources().getString(R.string.applist_menu_start_primarydisplay));
             } else {
-                menu.add(Menu.NONE, START_WITH_VDISPLAY, 1, getResources().getString(R.string.applist_menu_start_vdisplay));
+                menu.add(Menu.NONE, START_WITH_VDISPLAY, 1,
+                        getResources().getString(R.string.applist_menu_start_vdisplay));
             }
         } else {
             if (lastRunningAppId == selectedApp.app.getAppId()) {
                 menu.add(Menu.NONE, START_OR_RESUME_ID, 1, getResources().getString(R.string.applist_menu_resume));
                 menu.add(Menu.NONE, QUIT_ID, 2, getResources().getString(R.string.applist_menu_quit));
-            }
-            else {
+                menu.add(Menu.NONE, PAIR_CONTROLLERS_ID, 3,
+                        getResources().getString(R.string.applist_menu_pair_controllers));
+            } else {
                 if (prefConfig.useVirtualDisplay) {
-                    menu.add(Menu.NONE, START_WITH_QUIT_VDISPLAY, 1, getResources().getString(R.string.applist_menu_quit_and_start));
-                    menu.add(Menu.NONE, START_WITH_QUIT, 2, getResources().getString(R.string.applist_menu_quit_and_start_primarydisplay));
-                } else{
-                    menu.add(Menu.NONE, START_WITH_QUIT, 1, getResources().getString(R.string.applist_menu_quit_and_start));
-                    menu.add(Menu.NONE, START_WITH_QUIT_VDISPLAY, 2, getResources().getString(R.string.applist_menu_quit_and_start_vdisplay));
+                    menu.add(Menu.NONE, START_WITH_QUIT_VDISPLAY, 1,
+                            getResources().getString(R.string.applist_menu_quit_and_start));
+                    menu.add(Menu.NONE, START_WITH_QUIT, 2,
+                            getResources().getString(R.string.applist_menu_quit_and_start_primarydisplay));
+                } else {
+                    menu.add(Menu.NONE, START_WITH_QUIT, 1,
+                            getResources().getString(R.string.applist_menu_quit_and_start));
+                    menu.add(Menu.NONE, START_WITH_QUIT_VDISPLAY, 2,
+                            getResources().getString(R.string.applist_menu_quit_and_start_vdisplay));
                 }
             }
         }
 
-        // Only show the hide checkbox if this is not the currently running app or it's already hidden
+        // Only show the hide checkbox if this is not the currently running app or it's
+        // already hidden
         if (lastRunningAppId != selectedApp.app.getAppId() || selectedApp.isHidden) {
-            MenuItem hideAppItem = menu.add(Menu.NONE, HIDE_APP_ID, 3, getResources().getString(R.string.applist_menu_hide_app));
+            MenuItem hideAppItem = menu.add(Menu.NONE, HIDE_APP_ID, 3,
+                    getResources().getString(R.string.applist_menu_hide_app));
             hideAppItem.setCheckable(true);
             hideAppItem.setChecked(selectedApp.isHidden);
         }
@@ -486,7 +500,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
             ImageView appImageView = info.targetView.findViewById(R.id.grid_image);
             if (appImageView != null) {
                 // We have a grid ImageView, so we must be in grid-mode
-                BitmapDrawable drawable = (BitmapDrawable)appImageView.getDrawable();
+                BitmapDrawable drawable = (BitmapDrawable) appImageView.getDrawable();
                 if (drawable != null && drawable.getBitmap() != null) {
                     // We have a bitmap loaded too
                     menu.add(Menu.NONE, CREATE_SHORTCUT_ID, 5, getResources().getString(R.string.applist_menu_scut));
@@ -494,7 +508,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
             }
         }
 
-        menu.add(Menu.NONE, EXPORT_LAUNCHER_FILE_ID, 6, getResources().getString(R.string.applist_menu_export_launcher));
+        menu.add(Menu.NONE, EXPORT_LAUNCHER_FILE_ID, 6,
+                getResources().getString(R.string.applist_menu_export_launcher));
     }
 
     @Override
@@ -512,16 +527,15 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                 boolean withVDiaplay = itemId == START_WITH_QUIT_VDISPLAY;
                 if (withVDiaplay && !(computer.vDisplaySupported && computer.vDisplayDriverReady)) {
                     UiHelper.displayVdisplayConfirmationDialog(
-                        AppView.this,
-                        computer,
-                        () -> UiHelper.displayQuitConfirmationDialog(this, new Runnable() {
-                            @Override
-                            public void run() {
-                                ServerHelper.doStart(AppView.this, app.app, computer, managerBinder, true);
-                            }
-                        }, null),
-                        null
-                    );
+                            AppView.this,
+                            computer,
+                            () -> UiHelper.displayQuitConfirmationDialog(this, new Runnable() {
+                                @Override
+                                public void run() {
+                                    ServerHelper.doStart(AppView.this, app.app, computer, managerBinder, true);
+                                }
+                            }, null),
+                            null);
                 } else {
                     // Display a confirmation dialog first
                     UiHelper.displayQuitConfirmationDialog(this, new Runnable() {
@@ -542,12 +556,16 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                             AppView.this,
                             computer,
                             () -> ServerHelper.doStart(AppView.this, app.app, computer, managerBinder, true),
-                            null
-                    );
+                            null);
                 } else {
                     // Resume is the same as start for us
                     ServerHelper.doStart(AppView.this, app.app, computer, managerBinder, withVDiaplay);
                 }
+                return true;
+            }
+
+            case PAIR_CONTROLLERS_ID: {
+                ServerHelper.doStartPairControllers(AppView.this, app.app, computer, managerBinder);
                 return true;
             }
 
@@ -574,7 +592,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
             }
 
             case VIEW_DETAILS_ID: {
-                Dialog.displayDialog(AppView.this, getResources().getString(R.string.title_details), app.app.toString(), false);
+                Dialog.displayDialog(AppView.this, getResources().getString(R.string.title_details), app.app.toString(),
+                        false);
                 return true;
             }
 
@@ -594,7 +613,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                 ImageView appImageView = info.targetView.findViewById(R.id.grid_image);
                 Bitmap appBits = ((BitmapDrawable) appImageView.getDrawable()).getBitmap();
                 if (!shortcutHelper.createPinnedGameShortcut(computer, app.app, appBits)) {
-                    Toast.makeText(AppView.this, getResources().getString(R.string.unable_to_pin_shortcut), Toast.LENGTH_LONG).show();
+                    Toast.makeText(AppView.this, getResources().getString(R.string.unable_to_pin_shortcut),
+                            Toast.LENGTH_LONG).show();
                 }
                 return true;
             }
@@ -608,8 +628,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                             getResources().getString(R.string.proceed),
                             getResources().getString(R.string.cancel),
                             () -> shortcutHelper.exportLauncherFile(computer, app.app),
-                            null
-                    );
+                            null);
                 } else {
                     shortcutHelper.exportLauncherFile(computer, app.app);
                 }
@@ -628,7 +647,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
             public void run() {
                 boolean updated = false;
 
-                    // Look through our current app list to tag the running app
+                // Look through our current app list to tag the running app
                 for (int i = 0; i < appGridAdapter.getCount(); i++) {
                     AppObject existingApp = (AppObject) appGridAdapter.getItem(i);
 
@@ -637,18 +656,15 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                             existingApp.app.getAppId() == details.runningGameId) {
                         // This app was running and still is, so we're done now
                         return;
-                    }
-                    else if (existingApp.app.getAppId() == details.runningGameId) {
+                    } else if (existingApp.app.getAppId() == details.runningGameId) {
                         // This app wasn't running but now is
                         existingApp.isRunning = true;
                         updated = true;
-                    }
-                    else if (existingApp.isRunning) {
+                    } else if (existingApp.isRunning) {
                         // This app was running but now isn't
                         existingApp.isRunning = false;
                         updated = true;
-                    }
-                    else {
+                    } else {
                         // This app wasn't running and still isn't
                     }
                 }
@@ -714,7 +730,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
 
                     // This app was removed in the latest app list
                     if (!foundExistingApp) {
-                        shortcutHelper.disableAppShortcut(computer, existingApp.app, getString(R.string.app_removed_from_pc));
+                        shortcutHelper.disableAppShortcut(computer, existingApp.app,
+                                getString(R.string.app_removed_from_pc));
                         appGridAdapter.removeApp(existingApp);
                         updated = true;
 
@@ -736,8 +753,8 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
 
     @Override
     public int getAdapterFragmentLayoutId() {
-        return PreferenceConfiguration.readPreferences(AppView.this).smallIconMode ?
-                    R.layout.app_grid_view_small : R.layout.app_grid_view;
+        return PreferenceConfiguration.readPreferences(AppView.this).smallIconMode ? R.layout.app_grid_view_small
+                : R.layout.app_grid_view;
     }
 
     @Override
@@ -746,13 +763,14 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
         listView.setOnItemClickListener(new OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> arg0, View arg1, int pos,
-                                    long id) {
+                    long id) {
                 AppObject app = (AppObject) appGridAdapter.getItem(pos);
 
                 // Only open the context menu if something is running, otherwise start it
                 if (lastRunningAppId != 0) {
                     if (prefConfig.resumeWithoutConfirm && lastRunningAppId == app.app.getAppId()) {
-                        ServerHelper.doStart(AppView.this, app.app, computer, managerBinder, prefConfig.useVirtualDisplay);
+                        ServerHelper.doStart(AppView.this, app.app, computer, managerBinder,
+                                prefConfig.useVirtualDisplay);
                     } else {
                         openContextMenu(arg1);
                     }
@@ -762,10 +780,10 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                                 AppView.this,
                                 computer,
                                 () -> ServerHelper.doStart(AppView.this, app.app, computer, managerBinder, true),
-                                null
-                        );
+                                null);
                     } else {
-                        ServerHelper.doStart(AppView.this, app.app, computer, managerBinder, prefConfig.useVirtualDisplay);
+                        ServerHelper.doStart(AppView.this, app.app, computer, managerBinder,
+                                prefConfig.useVirtualDisplay);
                     }
                 }
             }

@@ -154,6 +154,7 @@
     <string name="applist_menu_start_vdisplay">Start in Virtual Display</string>
     <string name="applist_menu_start_primarydisplay">Start in Primary Display</string>
     <string name="applist_menu_quit">Quit Session</string>
+    <string name="applist_menu_pair_controllers">Pair Controllers</string>
     <string name="applist_menu_quit_and_start">Quit Current Game and Start</string>
     <string name="applist_menu_quit_and_start_vdisplay">Quit Current Game and Start in Virtual Display</string>
     <string name="applist_menu_quit_and_start_primarydisplay">Quit Current Game and Start in Primary Display</string>
