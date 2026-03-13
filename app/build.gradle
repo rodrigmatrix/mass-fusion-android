@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
     ndkVersion "27.0.12077973"
@@ -8,7 +9,7 @@ android {
     namespace 'com.limelight'
 
     defaultConfig {
-        minSdk 21
+        minSdk 23
         targetSdk 34
 
         versionName "20.2.6"
@@ -56,7 +57,7 @@ android {
                     "obtainium_app_url",
                     "https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.limelight.noir%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FClassicOldSong%2Fmoonlight-android%22%2C%22author%22%3A%22ClassicOldSong%22%2C%22name%22%3A%22Artemis%22%2C%22additionalSettings%22%3A%22%7B%5C%22apkFilterRegEx%5C%22%3A%5C%22nonRoot%5C%22%2C%5C%22matchGroutToUse%5C%22%3A%5C%22%241%5C%22%2C%5C%22versionExtractionRegEx%5C%22%3A%5C%22v(.%2B)%5C%22%7D%22%7D"
 
-            applicationId "com.limelight"
+            applicationId "com.massfusion"
             dimension "root"
             buildConfigField "boolean", "ROOT_BUILD", "false"
         }
@@ -95,10 +96,10 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix ".noirdebug"
-            resValue "string", "app_label", "Diana"
-            resValue "string", "app_label_root", "Diana (Root)"
-            resValue "string", "app_label_game", "Diana (Game)"
+            applicationIdSuffix ".debug"
+            resValue "string", "app_label", "Mass Fusion"
+            resValue "string", "app_label_root", "Mass Fusion (Root)"
+            resValue "string", "app_label_game", "Mass Fusion (Game)"
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
@@ -135,9 +136,9 @@ android {
             //
             // TL;DR: Leave the following line alone!
             applicationIdSuffix ".noir"
-            resValue "string", "app_label", "Artemis"
-            resValue "string", "app_label_root", "Artemis (Root)"
-            resValue "string", "app_label_game", "Artemis (Game)"
+            resValue "string", "app_label", "Mass Fusion"
+            resValue "string", "app_label_root", "Mass Fusion (Root)"
+            resValue "string", "app_label_game", "Mass Fusion (Game)"
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
@@ -161,6 +162,9 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
     }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
 }
 
 dependencies {
@@ -182,6 +186,11 @@ dependencies {
     implementation 'com.google.ai.edge.litert:litert:1.4.0'
     implementation 'com.google.ai.edge.litert:litert-gpu:1.4.0'
     implementation 'org.opencv:opencv:4.12.0'
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.media3:media3-exoplayer:1.9.2'
+    implementation 'androidx.media3:media3-ui:1.9.2'
+    implementation 'androidx.media3:media3-common-ktx:1.9.2'
+
 
     // Unit test dependencies
     testImplementation 'junit:junit:4.13.2'

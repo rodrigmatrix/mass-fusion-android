@@ -2,14 +2,18 @@ package com.limelight.grid.assets;
 
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
+import android.util.Log;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.ImageView;
 import android.widget.TextView;
+
+import androidx.core.content.ContextCompat;
 
 import com.limelight.R;
 import com.limelight.nvstream.http.ComputerDetails;
@@ -349,7 +353,11 @@ public class CachedAppAssetLoader {
         if (bmp != null) {
             // Show the bitmap immediately
             imgView.setVisibility(View.VISIBLE);
-            imgView.setImageBitmap(bmp.bitmap);
+            if (app.getAppName().equals("Virtual Display") || app.getAppName().equals("Desktop")) {
+                imgView.setImageBitmap(BitmapFactory.decodeResource(imgView.getResources(), R.drawable.ic_windows));
+            } else {
+                imgView.setImageBitmap(bmp.bitmap);
+            }
 
             // Show the text if it's a placeholder bitmap
             textView.setVisibility(isBitmapPlaceholder(bmp) ? View.VISIBLE : View.GONE);
@@ -362,7 +370,11 @@ public class CachedAppAssetLoader {
         final AsyncDrawable asyncDrawable = new AsyncDrawable(imgView.getResources(), placeholderBitmap, task);
         textView.setVisibility(View.INVISIBLE);
         imgView.setVisibility(View.INVISIBLE);
-        imgView.setImageDrawable(asyncDrawable);
+        if (app.getAppName().equals("Virtual Display") || app.getAppName().equals("Desktop")) {
+            imgView.setImageBitmap(BitmapFactory.decodeResource(imgView.getResources(), R.drawable.ic_windows));
+        } else {
+            imgView.setImageDrawable(asyncDrawable);
+        }
 
         // Run the task on our foreground executor
         task.executeOnExecutor(foregroundExecutor, tuple);

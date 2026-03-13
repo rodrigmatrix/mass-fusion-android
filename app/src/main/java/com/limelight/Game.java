@@ -42,6 +42,7 @@ import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.profiles.ProfilesManager;
 import com.limelight.ui.ExternalControllerView;
 import com.limelight.ui.GameGestures;
+import com.limelight.ui.LoadingChecker;
 import com.limelight.ui.StreamContainer;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ExternalDisplayControlActivity;
@@ -378,10 +379,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         setContentView(R.layout.activity_game);
 
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-
+        appName = Game.this.getIntent().getStringExtra(EXTRA_APP_NAME);
         // Start the spinner
-        spinner = SpinnerDialog.displayDialog(this, getResources().getString(R.string.conn_establishing_title),
-                getResources().getString(R.string.conn_establishing_msg), true);
+        spinner = LoadingChecker.showLoading(this, appName);
 
 
         Display currentDisplay = null;
@@ -850,10 +850,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
 
         if (!decoderRenderer.isAvcSupported()) {
-            if (spinner != null) {
-                spinner.dismiss();
-                spinner = null;
-            }
+            LoadingChecker.dismissLoading(this, spinner);
+            spinner = null;
 
             // If we can't find an AVC decoder, we can't proceed
             Dialog.displayDialog(this, getResources().getString(R.string.conn_error_title),
@@ -1762,6 +1760,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         super.onStop();
 
         SpinnerDialog.closeDialogs(this);
+        LoadingChecker.dismissLoading(this, spinner);
         Dialog.closeDialogs();
 
         if (virtualController != null) {
@@ -3426,7 +3425,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             @Override
             public void run() {
                 if (spinner != null) {
-                    spinner.setMessage(getResources().getString(R.string.conn_starting) + " " + stage);
+                    LoadingChecker.setMessage(
+                        getApplicationContext(),
+                        R.string.conn_starting,
+                        spinner,
+                        stage
+                    );
                 }
             }
         });
@@ -3475,7 +3479,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         final int portTestResult = MoonBridge.testClientConnectivity(ServerHelper.CONNECTION_TEST_SERVER, 443, portFlags);
 
         if (errorCode == 0 && portFlags != 0 && (portTestResult == MoonBridge.ML_TEST_RESULT_INCONCLUSIVE || portTestResult == 0)) {
-            spinner.setMessage(getResources().getString(R.string.unlocking_or_starting));
+            LoadingChecker.setMessage(
+                getApplicationContext(),
+                R.string.unlocking_or_starting,
+                spinner,
+                ""
+            );
             return true;
         }
 
@@ -3483,7 +3492,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             @Override
             public void run() {
                 if (spinner != null) {
-                    spinner.dismiss();
+                    LoadingChecker.dismissLoading(getApplicationContext(), spinner);
                     spinner = null;
                 }
 
@@ -3664,7 +3673,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             @Override
             public void run() {
                 if (spinner != null) {
-                    spinner.dismiss();
+                    LoadingChecker.dismissLoading(getApplicationContext(), spinner);
                     spinner = null;
                 }
 

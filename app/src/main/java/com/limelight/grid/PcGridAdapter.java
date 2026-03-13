@@ -51,7 +51,7 @@ public class PcGridAdapter extends GenericGridAdapter<PcView.ComputerObject> {
 
     @Override
     public void populateView(View parentView, ImageView imgView, RelativeLayout gridMask, ProgressBar prgView, TextView txtView, ImageView overlayView, PcView.ComputerObject obj) {
-        imgView.setImageResource(R.drawable.ic_computer);
+        imgView.setImageResource(R.drawable.ic_mass_fusion);
         if (obj.details.state == ComputerDetails.State.ONLINE) {
             imgView.setAlpha(1.0f);
         }
