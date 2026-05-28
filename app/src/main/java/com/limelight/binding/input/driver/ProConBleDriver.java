@@ -42,6 +42,7 @@ public class ProConBleDriver extends AbstractController {
     // Custom GATT Protocol UUIDs
     private static final UUID INPUT_REPORT_UUID = UUID.fromString("ab7de9be-89fe-49ad-828f-118f09df7fd2");
     private static final UUID COMMAND_WRITE_UUID = UUID.fromString("649d4ac9-8eb7-4e6c-af44-1ea54fe5f005");
+    private static final UUID COMMAND_RESPONSE_UUID = UUID.fromString("c765a961-d9d8-4d36-a20a-5315b111836a");
     
     // Commands
     private static final byte COMMAND_LEDS = 0x09;
@@ -199,15 +200,19 @@ public class ProConBleDriver extends AbstractController {
                 }
 
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    if (notifyCharacteristic != null) {
-                        gatt.setCharacteristicNotification(notifyCharacteristic, true);
-                        BluetoothGattDescriptor descriptor = notifyCharacteristic.getDescriptor(CCCD_UUID);
-                        if (descriptor != null) {
-                            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                            synchronized (writeQueue) {
-                                isWriting = true;
+                    // Enable notifications for all characteristics that support it
+                    for (BluetoothGattService service : gatt.getServices()) {
+                        for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
+                            if (characteristic.getUuid().equals(INPUT_REPORT_UUID) || characteristic.getUuid().equals(COMMAND_RESPONSE_UUID)) {
+                                gatt.setCharacteristicNotification(characteristic, true);
+                                BluetoothGattDescriptor descriptor = characteristic.getDescriptor(CCCD_UUID);
+                                if (descriptor != null) {
+                                    descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                                    // Queue descriptor writes by sleeping briefly so we don't overlap them
+                                    gatt.writeDescriptor(descriptor);
+                                    try { Thread.sleep(200); } catch (Exception e) {}
+                                }
                             }
-                            gatt.writeDescriptor(descriptor);
                         }
                     }
 
@@ -232,10 +237,10 @@ public class ProConBleDriver extends AbstractController {
 
                         sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_FINISH, new byte[]{0});
 
-                        // Initialize Custom Protocol
-                        sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_INIT, new byte[]{0, 0, 0, 0});
-                        sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_ENABLE, new byte[]{0, 0, 0, 0});
-                        sendCommand(COMMAND_LEDS, SUBCOMMAND_LEDS_SET_PLAYER, new byte[]{0x01}); // Player 1 LED
+                        // Initialize Custom Protocol (Feature Flags: 0x94)
+                        sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_INIT, new byte[]{(byte)0x94, 0, 0, 0});
+                        sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_ENABLE, new byte[]{(byte)0x94, 0, 0, 0});
+                        sendCommand(COMMAND_LEDS, SUBCOMMAND_LEDS_SET_PLAYER, new byte[]{0x01, 0, 0, 0}); // Player 1 LED
                     } else {
                         LimeLog.warning("ProConBleDriver: Required custom characteristics not found.");
                     }
@@ -262,7 +267,7 @@ public class ProConBleDriver extends AbstractController {
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            if (characteristic == notifyCharacteristic) {
+            if (characteristic.getUuid().equals(INPUT_REPORT_UUID)) {
                 byte[] data = characteristic.getValue();
                 if (data != null && data.length > 0) {
                     if (handleRead(ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN))) {
@@ -270,6 +275,9 @@ public class ProConBleDriver extends AbstractController {
                         reportMotion();
                     }
                 }
+            } else if (characteristic.getUuid().equals(COMMAND_RESPONSE_UUID)) {
+                // We just log command responses for now, the Python driver uses them for futures
+                LimeLog.info("ProConBleDriver: Command Response Received: " + characteristic.getValue().length + " bytes");
             }
         }
     };
