@@ -1398,7 +1398,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         // This mapping was adding in Android 10, then changed based on
         // kernel changes (adding hid-nintendo) in Android 11. If we're
         // on anything newer than Pie, just use the built-in mapping.
-        if ((context.vendorId == 0x057e && context.productId == 0x2009 && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) || // Switch Pro controller
+        if ((context.vendorId == 0x057e && (context.productId == 0x2009 || context.productId == 0x2069 || context.productId == 0x2066 || context.productId == 0x2067) && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) || // Switch Pro controller
                 (context.vendorId == 0x0f0d && context.productId == 0x00c1)) { // HORIPAD for Switch
             switch (event.getScanCode()) {
                 case 0x130://304

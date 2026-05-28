@@ -32,6 +32,10 @@ public class ProConController extends AbstractController {
     private static final int IMU_CALIBRATION_LENGTH = 24;
     private static final int STICK_CALIBRATION_LENGTH = 9;
     private static final int COMMAND_RETRIES = 10;
+    private static final int USB_VENDOR_NINTENDO = 0x057e;
+    private static final int USB_PRODUCT_SWITCH_PRO = 0x2009;
+    private static final int USB_PRODUCT_SWITCH_PRO_2 = 0x2069;
+    private static final int SWITCH2_USB_INTERFACE_NUMBER = 1;
 
     private final UsbDevice device;
     private final UsbDeviceConnection connection;
@@ -43,7 +47,9 @@ public class ProConController extends AbstractController {
     private final float[][][] stickExtends = new float[2][2][2]; // Pre-calculated scale for each axis
 
     public static boolean canClaimDevice(UsbDevice device) {
-        return (device.getVendorId() == 0x057e && device.getProductId() == 0x2009);
+        return device.getVendorId() == USB_VENDOR_NINTENDO &&
+                (device.getProductId() == USB_PRODUCT_SWITCH_PRO ||
+                 device.getProductId() == USB_PRODUCT_SWITCH_PRO_2);
     }
 
     public ProConController(UsbDevice device, UsbDeviceConnection connection, int deviceId, UsbDriverListener listener) {
@@ -112,8 +118,116 @@ public class ProConController extends AbstractController {
         });
     }
 
+    private Thread createSwitch2InputThread() {
+        return new Thread(() -> {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                return;
+            }
+
+            if (!initializeSwitch2Usb()) {
+                LimeLog.info("ProCon2: initialization failed!");
+                ProConController.this.stop();
+                return;
+            }
+
+            LimeLog.info("ProCon2: initialized!");
+            notifyDeviceAdded();
+
+            while (!Thread.currentThread().isInterrupted() && !stopped) {
+                byte[] buffer = new byte[PACKET_SIZE];
+                int res;
+                do {
+                    long lastMillis = SystemClock.uptimeMillis();
+                    res = connection.bulkTransfer(inEndpt, buffer, buffer.length, 1000);
+                    if (res == 0) {
+                        res = -1;
+                    }
+                    if (res == -1 && SystemClock.uptimeMillis() - lastMillis < 1000) {
+                        LimeLog.warning("Detected ProCon2 device I/O error");
+                        ProConController.this.stop();
+                        break;
+                    }
+                } while (res == -1 && !Thread.currentThread().isInterrupted() && !stopped);
+
+                if (res == -1 || stopped) {
+                    break;
+                }
+
+                if (handleRead(ByteBuffer.wrap(buffer, 0, res).order(ByteOrder.LITTLE_ENDIAN))) {
+                    reportInput();
+                    reportMotion();
+                }
+            }
+        });
+    }
+
     private boolean sendData(byte[] data, int size) {
         return connection.bulkTransfer(outEndpt, data, size, 100) == size;
+    }
+
+    private boolean isSwitch2ProController() {
+        return device.getProductId() == USB_PRODUCT_SWITCH_PRO_2;
+    }
+
+    private boolean sendSwitch2UsbCommand(byte[] command, boolean readReply) {
+        if (!sendData(command, command.length)) {
+            LimeLog.warning("ProCon2: failed to send command " + String.format((Locale) null, "0x%02x", command[0]));
+            return false;
+        }
+
+        if (readReply) {
+            byte[] response = new byte[PACKET_SIZE];
+            connection.bulkTransfer(inEndpt, response, response.length, 50);
+        }
+
+        return true;
+    }
+
+    private boolean initializeSwitch2Usb() {
+        byte[][] commands = new byte[][] {
+                // Starts Switch 2 USB HID output at 4 ms intervals.
+                {(byte)0x03, (byte)0x91, 0x00, 0x0d, 0x00, 0x08, 0x00, 0x00,
+                        0x01, 0x00, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff},
+                {(byte)0x07, (byte)0x91, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00},
+                {(byte)0x16, (byte)0x91, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00},
+                {(byte)0x15, (byte)0x91, 0x00, 0x01, 0x00, 0x0e, 0x00, 0x00,
+                        0x00, 0x02, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff,
+                        (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff},
+                {(byte)0x15, (byte)0x91, 0x00, 0x02, 0x00, 0x11, 0x00, 0x00,
+                        0x00, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff,
+                        (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff},
+                {(byte)0x15, (byte)0x91, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00},
+                {(byte)0x09, (byte)0x91, 0x00, 0x07, 0x00, 0x08, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+                {(byte)0x0c, (byte)0x91, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00,
+                        0x27, 0x00, 0x00, 0x00},
+                {(byte)0x11, (byte)0x91, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00},
+                {(byte)0x0a, (byte)0x91, 0x00, 0x08, 0x00, 0x14, 0x00, 0x00,
+                        0x01, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff,
+                        0x35, 0x00, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+                {(byte)0x0c, (byte)0x91, 0x00, 0x04, 0x00, 0x04, 0x00, 0x00,
+                        0x27, 0x00, 0x00, 0x00},
+                {(byte)0x03, (byte)0x91, 0x00, 0x0a, 0x00, 0x04, 0x00, 0x00,
+                        0x09, 0x00, 0x00, 0x00},
+                {(byte)0x10, (byte)0x91, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00},
+                {(byte)0x01, (byte)0x91, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00},
+                {(byte)0x03, (byte)0x91, 0x00, 0x01, 0x00, 0x00, 0x00},
+                {(byte)0x0a, (byte)0x91, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00,
+                        0x03, 0x00, 0x00},
+                {(byte)0x09, (byte)0x91, 0x00, 0x07, 0x00, 0x08, 0x00, 0x00,
+                        (byte)((getControllerId() + 1) & 0x0f), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+        };
+
+        for (byte[] command : commands) {
+            if (!sendSwitch2UsbCommand(command, true)) {
+                return false;
+            }
+            SystemClock.sleep(10);
+        }
+
+        return true;
     }
 
     private boolean sendCommand(byte id, boolean waitReply) {
@@ -218,7 +332,9 @@ public class ProConController extends AbstractController {
             }
         }
 
-        UsbInterface iface = device.getInterface(0);
+        int interfaceNumber = isSwitch2ProController() && device.getInterfaceCount() > SWITCH2_USB_INTERFACE_NUMBER
+                ? SWITCH2_USB_INTERFACE_NUMBER : 0;
+        UsbInterface iface = device.getInterface(interfaceNumber);
         for (int i = 0; i < iface.getEndpointCount(); i++) {
             UsbEndpoint endpt = iface.getEndpoint(i);
             if (endpt.getDirection() == UsbConstants.USB_DIR_IN) {
@@ -233,7 +349,7 @@ public class ProConController extends AbstractController {
             return false;
         }
 
-        inputThread = createInputThread();
+        inputThread = isSwitch2ProController() ? createSwitch2InputThread() : createInputThread();
         inputThread.start();
 
         return true;
@@ -293,6 +409,10 @@ public class ProConController extends AbstractController {
     }
 
     protected boolean handleRead(ByteBuffer buffer) {
+        if (isSwitch2ProController()) {
+            return handleSwitch2Read(buffer);
+        }
+
         if (buffer.remaining() < PACKET_SIZE) {
             return false;
         }
@@ -339,6 +459,53 @@ public class ProConController extends AbstractController {
         gyroZ = -buffer.getShort(43) / 16.0f;
         gyroX = -buffer.getShort(45) / 16.0f;
         gyroY = buffer.getShort(47) / 16.0f;
+
+        return true;
+    }
+
+    private boolean handleSwitch2Read(ByteBuffer buffer) {
+        if (buffer.limit() < 16) {
+            return false;
+        }
+
+        int buttons = buffer.getInt(4);
+
+        buttonFlags = 0;
+        setButtonFlag(ControllerPacket.B_FLAG, buttons & 0x00000008);
+        setButtonFlag(ControllerPacket.A_FLAG, buttons & 0x00000004);
+        setButtonFlag(ControllerPacket.Y_FLAG, buttons & 0x00000002);
+        setButtonFlag(ControllerPacket.X_FLAG, buttons & 0x00000001);
+        setButtonFlag(ControllerPacket.LB_FLAG, buttons & 0x00400000);
+        setButtonFlag(ControllerPacket.RB_FLAG, buttons & 0x00000040);
+        setButtonFlag(ControllerPacket.BACK_FLAG, buttons & 0x00000100);
+        setButtonFlag(ControllerPacket.PLAY_FLAG, buttons & 0x00000200);
+        setButtonFlag(ControllerPacket.LS_CLK_FLAG, buttons & 0x00000800);
+        setButtonFlag(ControllerPacket.RS_CLK_FLAG, buttons & 0x00000400);
+        setButtonFlag(ControllerPacket.SPECIAL_BUTTON_FLAG, buttons & 0x00001000);
+        setButtonFlag(ControllerPacket.MISC_FLAG, buttons & 0x00002000);
+        setButtonFlag(ControllerPacket.UP_FLAG, buttons & 0x00020000);
+        setButtonFlag(ControllerPacket.DOWN_FLAG, buttons & 0x00010000);
+        setButtonFlag(ControllerPacket.LEFT_FLAG, buttons & 0x00080000);
+        setButtonFlag(ControllerPacket.RIGHT_FLAG, buttons & 0x00040000);
+
+        leftTrigger = (buttons & 0x00800000) != 0 ? 1 : 0;
+        rightTrigger = (buttons & 0x00000080) != 0 ? 1 : 0;
+
+        int lsRaw = (buffer.get(10) & 0xFF) | ((buffer.get(11) & 0xFF) << 8) | ((buffer.get(12) & 0xFF) << 16);
+        int rsRaw = (buffer.get(13) & 0xFF) | ((buffer.get(14) & 0xFF) << 8) | ((buffer.get(15) & 0xFF) << 16);
+        leftStickX = ((lsRaw & 0xFFF) - 2048) / 2048.0f;
+        leftStickY = -(((lsRaw >> 12) & 0xFFF) - 2048) / 2048.0f;
+        rightStickX = ((rsRaw & 0xFFF) - 2048) / 2048.0f;
+        rightStickY = -(((rsRaw >> 12) & 0xFFF) - 2048) / 2048.0f;
+
+        if (buffer.limit() >= 60) {
+            accelX = buffer.getShort(48) / 4096.0f;
+            accelY = buffer.getShort(50) / 4096.0f;
+            accelZ = buffer.getShort(52) / 4096.0f;
+            gyroZ = -buffer.getShort(54) / 16.0f;
+            gyroX = -buffer.getShort(56) / 16.0f;
+            gyroY = buffer.getShort(58) / 16.0f;
+        }
 
         return true;
     }
