@@ -58,7 +58,7 @@ public class ProConBleDriver extends AbstractController {
         if (device == null) return false;
         
         LimeLog.info("ProConBleDriver: Connecting to GATT server...");
-        gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
+        gatt = device.connectGatt(context, false, gattCallback);
         return gatt != null;
     }
 
