@@ -179,6 +179,15 @@ public class BlePairingActivity extends Activity {
                     // Ignore
                 }
 
+                // Bond with the device so it remembers the phone
+                if (result.getDevice().getBondState() != BluetoothDevice.BOND_BONDED) {
+                    try {
+                        result.getDevice().createBond();
+                    } catch (SecurityException e) {
+                        LimeLog.warning("SecurityException creating bond: " + e.getMessage());
+                    }
+                }
+
                 // Save MAC address to preferences
                 SharedPreferences prefs = getSharedPreferences("ble_prefs", Context.MODE_PRIVATE);
                 prefs.edit().putString(PREF_PAIRED_BLE_CONTROLLER, result.getDevice().getAddress()).apply();
