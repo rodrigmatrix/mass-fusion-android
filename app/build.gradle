@@ -1,5 +1,6 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 android {
     ndkVersion "27.0.12077973"
@@ -23,6 +24,7 @@ android {
 
     buildFeatures {
         buildConfig = true
+        compose = true
     }
 
     productFlavors {
@@ -197,4 +199,16 @@ dependencies {
     testImplementation 'androidx.test:core:1.7.0'
     testImplementation 'org.robolectric:robolectric:4.16'
     testImplementation 'org.mockito:mockito-core:5.19.0'
+
+    // Compose dependencies
+    def composeBom = platform('androidx.compose:compose-bom:2024.05.00')
+    implementation composeBom
+    androidTestImplementation composeBom
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.activity:activity-compose:1.9.0'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
 }
