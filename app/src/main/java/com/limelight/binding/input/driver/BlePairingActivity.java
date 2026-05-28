@@ -192,6 +192,7 @@ public class BlePairingActivity extends Activity {
 
                 // Start the background service immediately so it connects to the controller
                 // and keeps it awake, preventing the blinking lights from timing out!
+                LimeLog.info("BlePairingActivity: Starting BleDriverService!");
                 Intent serviceIntent = new Intent(BlePairingActivity.this, BleDriverService.class);
                 startService(serviceIntent);
 

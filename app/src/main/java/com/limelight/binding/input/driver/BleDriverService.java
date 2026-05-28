@@ -111,6 +111,7 @@ public class BleDriverService extends Service implements UsbDriverListener {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        LimeLog.info("BleDriverService: onStartCommand executed!");
         start();
         return START_STICKY;
     }

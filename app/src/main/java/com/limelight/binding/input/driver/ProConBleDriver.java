@@ -39,6 +39,17 @@ public class ProConBleDriver extends AbstractController {
     private final Queue<byte[]> writeQueue = new LinkedList<>();
     private boolean isWriting = false;
 
+    // Custom GATT Protocol UUIDs
+    private static final UUID INPUT_REPORT_UUID = UUID.fromString("ab7de9be-89fe-49ad-828f-118f09df7fd2");
+    private static final UUID COMMAND_WRITE_UUID = UUID.fromString("649d4ac9-8eb7-4e6c-af44-1ea54fe5f005");
+    
+    // Commands
+    private static final byte COMMAND_LEDS = 0x09;
+    private static final byte SUBCOMMAND_LEDS_SET_PLAYER = 0x07;
+    private static final byte COMMAND_FEATURE = 0x0c;
+    private static final byte SUBCOMMAND_FEATURE_INIT = 0x02;
+    private static final byte SUBCOMMAND_FEATURE_ENABLE = 0x04;
+
     // Standard Client Characteristic Configuration Descriptor UUID
     private static final UUID CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
@@ -77,6 +88,10 @@ public class ProConBleDriver extends AbstractController {
 
     @Override
     public void rumble(short lowFreqMotor, short highFreqMotor) {
+        // TODO: Implement custom VIBRATION_WRITE_PRO_CONTROLLER_UUID logic.
+        // For now, return early so we don't send malformed packets to COMMAND_WRITE_UUID
+        if (true) return;
+        
         if (writeCharacteristic == null) return;
         byte[] data = new byte[10];
         data[0] = 0x10;
@@ -128,14 +143,19 @@ public class ProConBleDriver extends AbstractController {
         }
     }
 
-    private void sendSubcommand(byte subcommand, byte[] payload) {
-        byte[] data = new byte[11 + payload.length];
-        data[0] = 0x01;
-        data[1] = sendPacketCount++;
-        if (sendPacketCount > 0xF) sendPacketCount = 0;
-
-        data[10] = subcommand;
-        System.arraycopy(payload, 0, data, 11, payload.length);
+    private void sendCommand(byte commandId, byte subcommandId, byte[] payload) {
+        byte[] data = new byte[8 + payload.length];
+        data[0] = commandId;
+        data[1] = (byte)0x91;
+        data[2] = 0x01;
+        data[3] = subcommandId;
+        data[4] = 0x00;
+        data[5] = (byte)payload.length;
+        data[6] = 0x00;
+        data[7] = 0x00;
+        if (payload.length > 0) {
+            System.arraycopy(payload, 0, data, 8, payload.length);
+        }
         queueWrite(data);
     }
 
@@ -164,12 +184,11 @@ public class ProConBleDriver extends AbstractController {
                         int props = characteristic.getProperties();
                         LimeLog.info("ProConBleDriver:   - Char " + characteristic.getUuid().toString() + " props=" + props);
                         
-                        if ((props & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 || 
-                            (props & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
-                            if (writeCharacteristic == null) writeCharacteristic = characteristic;
+                        if (characteristic.getUuid().equals(COMMAND_WRITE_UUID)) {
+                            writeCharacteristic = characteristic;
                         }
-                        if ((props & BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) {
-                            if (notifyCharacteristic == null) notifyCharacteristic = characteristic;
+                        if (characteristic.getUuid().equals(INPUT_REPORT_UUID)) {
+                            notifyCharacteristic = characteristic;
                         }
                     }
                 }
@@ -184,15 +203,15 @@ public class ProConBleDriver extends AbstractController {
                 }
 
                 if (writeCharacteristic != null && notifyCharacteristic != null) {
-                    LimeLog.info("ProConBleDriver: Found characteristics! Initializing...");
+                    LimeLog.info("ProConBleDriver: Found custom characteristics! Initializing...");
                     notifyDeviceAdded();
-                    // Basic init
-                    sendSubcommand((byte)0x40, new byte[]{0x01}); // Enable IMU
-                    sendSubcommand((byte)0x48, new byte[]{0x01}); // Enable Vibration
-                    sendSubcommand((byte)0x30, new byte[]{0x01}); // Player 1 LED
-                    sendSubcommand((byte)0x03, new byte[]{0x30}); // Input mode 0x30
+                    
+                    // Initialize Custom Protocol
+                    sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_INIT, new byte[]{0, 0, 0, 0});
+                    sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_ENABLE, new byte[]{0, 0, 0, 0});
+                    sendCommand(COMMAND_LEDS, SUBCOMMAND_LEDS_SET_PLAYER, new byte[]{0x01}); // Player 1 LED
                 } else {
-                    LimeLog.warning("ProConBleDriver: Required characteristics not found.");
+                    LimeLog.warning("ProConBleDriver: Required custom characteristics not found.");
                 }
             }
         }
