@@ -198,49 +198,58 @@ public class ProConBleDriver extends AbstractController {
                     }
                 }
 
-                if (notifyCharacteristic != null) {
-                    gatt.setCharacteristicNotification(notifyCharacteristic, true);
-                    BluetoothGattDescriptor descriptor = notifyCharacteristic.getDescriptor(CCCD_UUID);
-                    if (descriptor != null) {
-                        descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                        gatt.writeDescriptor(descriptor);
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (notifyCharacteristic != null) {
+                        gatt.setCharacteristicNotification(notifyCharacteristic, true);
+                        BluetoothGattDescriptor descriptor = notifyCharacteristic.getDescriptor(CCCD_UUID);
+                        if (descriptor != null) {
+                            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                            synchronized (writeQueue) {
+                                isWriting = true;
+                            }
+                            gatt.writeDescriptor(descriptor);
+                        }
                     }
-                }
 
-                if (writeCharacteristic != null && notifyCharacteristic != null) {
-                    LimeLog.info("ProConBleDriver: Found custom characteristics! Initializing...");
-                    notifyDeviceAdded();
-                    
-                    // Custom Application-Layer Pairing Sequence
-                    byte[] dummyMac = new byte[]{0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
-                    byte[] setMacPayload = new byte[14];
-                    setMacPayload[0] = 0x00;
-                    setMacPayload[1] = 0x02;
-                    System.arraycopy(dummyMac, 0, setMacPayload, 2, 6);
-                    System.arraycopy(dummyMac, 0, setMacPayload, 8, 6);
-                    sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_SET_MAC, setMacPayload);
+                    if (writeCharacteristic != null && notifyCharacteristic != null) {
+                        LimeLog.info("ProConBleDriver: Found custom characteristics! Initializing...");
+                        notifyDeviceAdded();
+                        
+                        // Custom Application-Layer Pairing Sequence
+                        byte[] dummyMac = new byte[]{0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
+                        byte[] setMacPayload = new byte[14];
+                        setMacPayload[0] = 0x00;
+                        setMacPayload[1] = 0x02;
+                        System.arraycopy(dummyMac, 0, setMacPayload, 2, 6);
+                        System.arraycopy(dummyMac, 0, setMacPayload, 8, 6);
+                        sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_SET_MAC, setMacPayload);
 
-                    byte[] ltk1 = new byte[]{0x00, (byte)0xea, (byte)0xbd, 0x47, 0x13, (byte)0x89, 0x35, 0x42, (byte)0xc6, 0x79, (byte)0xee, 0x07, (byte)0xf2, 0x53, 0x2c, 0x6c, 0x31};
-                    sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_LTK1, ltk1);
+                        byte[] ltk1 = new byte[]{0x00, (byte)0xea, (byte)0xbd, 0x47, 0x13, (byte)0x89, 0x35, 0x42, (byte)0xc6, 0x79, (byte)0xee, 0x07, (byte)0xf2, 0x53, 0x2c, 0x6c, 0x31};
+                        sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_LTK1, ltk1);
 
-                    byte[] ltk2 = new byte[]{0x00, 0x40, (byte)0xb0, (byte)0x8a, 0x5f, (byte)0xcd, 0x1f, (byte)0x9b, 0x41, 0x12, 0x5c, (byte)0xac, (byte)0xc6, 0x3f, 0x38, (byte)0xa0, 0x73};
-                    sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_LTK2, ltk2);
+                        byte[] ltk2 = new byte[]{0x00, 0x40, (byte)0xb0, (byte)0x8a, 0x5f, (byte)0xcd, 0x1f, (byte)0x9b, 0x41, 0x12, 0x5c, (byte)0xac, (byte)0xc6, 0x3f, 0x38, (byte)0xa0, 0x73};
+                        sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_LTK2, ltk2);
 
-                    sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_FINISH, new byte[]{0});
+                        sendCommand(COMMAND_PAIR, SUBCOMMAND_PAIR_FINISH, new byte[]{0});
 
-                    // Initialize Custom Protocol
-                    sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_INIT, new byte[]{0, 0, 0, 0});
-                    sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_ENABLE, new byte[]{0, 0, 0, 0});
-                    sendCommand(COMMAND_LEDS, SUBCOMMAND_LEDS_SET_PLAYER, new byte[]{0x01}); // Player 1 LED
-                } else {
-                    LimeLog.warning("ProConBleDriver: Required custom characteristics not found.");
-                }
+                        // Initialize Custom Protocol
+                        sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_INIT, new byte[]{0, 0, 0, 0});
+                        sendCommand(COMMAND_FEATURE, SUBCOMMAND_FEATURE_ENABLE, new byte[]{0, 0, 0, 0});
+                        sendCommand(COMMAND_LEDS, SUBCOMMAND_LEDS_SET_PLAYER, new byte[]{0x01}); // Player 1 LED
+                    } else {
+                        LimeLog.warning("ProConBleDriver: Required custom characteristics not found.");
+                    }
+                }, 2000); // 2 second stabilization delay
             }
         }
 
         @Override
         public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
             LimeLog.info("ProConBleDriver: Descriptor write status=" + status);
+            synchronized (writeQueue) {
+                isWriting = false;
+                processWriteQueue();
+            }
         }
 
         @Override
