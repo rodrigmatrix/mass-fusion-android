@@ -159,8 +159,11 @@ public class ProConBleDriver extends AbstractController {
                 LimeLog.info("ProConBleDriver: Services discovered.");
                 
                 for (BluetoothGattService service : gatt.getServices()) {
+                    LimeLog.info("ProConBleDriver: Found Service " + service.getUuid().toString());
                     for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
                         int props = characteristic.getProperties();
+                        LimeLog.info("ProConBleDriver:   - Char " + characteristic.getUuid().toString() + " props=" + props);
+                        
                         if ((props & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 || 
                             (props & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
                             if (writeCharacteristic == null) writeCharacteristic = characteristic;
