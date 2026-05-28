@@ -234,7 +234,7 @@
             android:label="Ble Driver Service" />
         <activity
             android:name=".binding.input.driver.BlePairingActivity"
-            android:theme="@style/Theme.AppCompat.Translucent"
+            android:theme="@style/SettingsTheme"
             android:label="@string/title_pair_pro_controller" />
 
         <activity

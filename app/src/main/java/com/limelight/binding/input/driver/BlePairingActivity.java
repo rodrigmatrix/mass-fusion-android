@@ -135,16 +135,9 @@ public class BlePairingActivity extends Activity {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build();
                 
-        // Manufacturer data for Nintendo Switch Controllers is 0x0553 (1363)
-        ScanFilter filter = new ScanFilter.Builder()
-                .setManufacturerData(1363, new byte[]{})
-                .build();
-                
-        List<ScanFilter> filters = new ArrayList<>();
-        filters.add(filter);
-
+        // Scan for all devices, filter by name in callback
         try {
-            bluetoothLeScanner.startScan(filters, settings, leScanCallback);
+            bluetoothLeScanner.startScan(null, settings, leScanCallback);
         } catch (SecurityException e) {
             LimeLog.warning("SecurityException starting scan: " + e.getMessage());
             Toast.makeText(this, "Permission error starting scan", Toast.LENGTH_SHORT).show();
@@ -157,10 +150,24 @@ public class BlePairingActivity extends Activity {
         public void onScanResult(int callbackType, ScanResult result) {
             if (!mScanning) return;
             
-            // Validate the result
-            SparseArray<byte[]> manufacturerData = result.getScanRecord().getManufacturerSpecificData();
+            // Validate the result by name or manufacturer data
+            String deviceName = result.getDevice().getName();
+            boolean isProController = false;
+
+            if (deviceName != null) {
+                LimeLog.info("Discovered BLE device: " + deviceName);
+                if (deviceName.toLowerCase().contains("pro controller")) {
+                    isProController = true;
+                }
+            }
+
+            SparseArray<byte[]> manufacturerData = result.getScanRecord() != null ? result.getScanRecord().getManufacturerSpecificData() : null;
             if (manufacturerData != null && manufacturerData.indexOfKey(1363) >= 0) {
-                LimeLog.info("Found Nintendo Switch BLE Controller: " + result.getDevice().getAddress());
+                isProController = true;
+            }
+
+            if (isProController) {
+                LimeLog.info("Found Nintendo Switch BLE Controller: " + result.getDevice().getAddress() + " name: " + deviceName);
                 
                 // Stop scanning
                 mScanning = false;
