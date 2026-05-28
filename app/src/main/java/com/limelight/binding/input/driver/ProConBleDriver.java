@@ -21,7 +21,7 @@ import java.nio.ByteOrder;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.UUID;
-import java.util.concurrent.LinkedBlockingQueue;
+
 
 public class ProConBleDriver extends AbstractController {
 
@@ -32,9 +32,6 @@ public class ProConBleDriver extends AbstractController {
     private BluetoothGattCharacteristic notifyCharacteristic;
     private BluetoothGattCharacteristic responseCharacteristic;
     private boolean stopped = false;
-
-    private final int[][][] stickCalibration = new int[2][2][3];
-    private final float[][][] stickExtends = new float[2][2][2];
 
     // Custom GATT Protocol UUIDs (matching switch2-controllers-windows10-gyro)
     private static final UUID INPUT_REPORT_UUID    = UUID.fromString("ab7de9be-89fe-49ad-828f-118f09df7fd2");
@@ -76,8 +73,6 @@ public class ProConBleDriver extends AbstractController {
         this.device = device;
         this.type = MoonBridge.LI_CTYPE_NINTENDO;
         this.capabilities = MoonBridge.LI_CCAP_GYRO | MoonBridge.LI_CCAP_ACCEL | MoonBridge.LI_CCAP_RUMBLE;
-        applyDefaultCalibration(0);
-        applyDefaultCalibration(1);
     }
 
     @SuppressLint("MissingPermission")
@@ -308,72 +303,53 @@ public class ProConBleDriver extends AbstractController {
         enqueueCommand(COMMAND_LEDS, SUBCOMMAND_LEDS_SET_PLAYER, new byte[]{(byte)LED_PLAYER_1, 0x00, 0x00, 0x00});
     }
 
-    private boolean handleRead(ByteBuffer buffer) {
-        if (buffer.remaining() < 12) return false;
+    private boolean handleRead(ByteBuffer buf) {
+        // Input report format from ControllerInputData in controller.py / SWITCH_BUTTONS in config.py
+        // [4:8]   = buttons  (u32 LE)
+        // [10:13] = left stick  (12-bit x | 12-bit y in 3 bytes)
+        // [13:16] = right stick (same)
+        // [48:54] = accel X,Y,Z (s16 LE each)
+        // [54:60] = gyro  X,Y,Z (s16 LE each)
+        if (buf.limit() < 16) return false;
 
-        byte reportId = buffer.get(0);
-        if (reportId == 0x30 || reportId == 0x21 || reportId == 0x31 || reportId == 0x32 || reportId == 0x33) {
-            buttonFlags = 0;
-            setButtonFlag(ControllerPacket.B_FLAG,            buffer.get(3) & 0x08);
-            setButtonFlag(ControllerPacket.A_FLAG,            buffer.get(3) & 0x04);
-            setButtonFlag(ControllerPacket.Y_FLAG,            buffer.get(3) & 0x02);
-            setButtonFlag(ControllerPacket.X_FLAG,            buffer.get(3) & 0x01);
-            setButtonFlag(ControllerPacket.UP_FLAG,           buffer.get(5) & 0x02);
-            setButtonFlag(ControllerPacket.DOWN_FLAG,         buffer.get(5) & 0x01);
-            setButtonFlag(ControllerPacket.LEFT_FLAG,         buffer.get(5) & 0x08);
-            setButtonFlag(ControllerPacket.RIGHT_FLAG,        buffer.get(5) & 0x04);
-            setButtonFlag(ControllerPacket.BACK_FLAG,         buffer.get(4) & 0x01);
-            setButtonFlag(ControllerPacket.PLAY_FLAG,         buffer.get(4) & 0x02);
-            setButtonFlag(ControllerPacket.MISC_FLAG,         buffer.get(4) & 0x20);
-            setButtonFlag(ControllerPacket.SPECIAL_BUTTON_FLAG, buffer.get(4) & 0x10);
-            setButtonFlag(ControllerPacket.LB_FLAG,           buffer.get(5) & 0x40);
-            setButtonFlag(ControllerPacket.RB_FLAG,           buffer.get(3) & 0x40);
-            setButtonFlag(ControllerPacket.LS_CLK_FLAG,       buffer.get(4) & 0x08);
-            setButtonFlag(ControllerPacket.RS_CLK_FLAG,       buffer.get(4) & 0x04);
+        int buttons = buf.getInt(4);
 
-            leftTrigger  = ((buffer.get(5) & 0x80) != 0) ? 1 : 0;
-            rightTrigger = ((buffer.get(3) & 0x80) != 0) ? 1 : 0;
+        buttonFlags = 0;
+        setButtonFlag(ControllerPacket.A_FLAG,              buttons & 0x00000008);
+        setButtonFlag(ControllerPacket.B_FLAG,              buttons & 0x00000004);
+        setButtonFlag(ControllerPacket.X_FLAG,              buttons & 0x00000002);
+        setButtonFlag(ControllerPacket.Y_FLAG,              buttons & 0x00000001);
+        setButtonFlag(ControllerPacket.LB_FLAG,             buttons & 0x00400000);
+        setButtonFlag(ControllerPacket.RB_FLAG,             buttons & 0x00000040);
+        setButtonFlag(ControllerPacket.BACK_FLAG,           buttons & 0x00000100);
+        setButtonFlag(ControllerPacket.PLAY_FLAG,           buttons & 0x00000200);
+        setButtonFlag(ControllerPacket.LS_CLK_FLAG,         buttons & 0x00000800);
+        setButtonFlag(ControllerPacket.RS_CLK_FLAG,         buttons & 0x00000400);
+        setButtonFlag(ControllerPacket.SPECIAL_BUTTON_FLAG, buttons & 0x00001000);
+        setButtonFlag(ControllerPacket.MISC_FLAG,           buttons & 0x00002000);
+        setButtonFlag(ControllerPacket.UP_FLAG,             buttons & 0x00020000);
+        setButtonFlag(ControllerPacket.DOWN_FLAG,           buttons & 0x00010000);
+        setButtonFlag(ControllerPacket.LEFT_FLAG,           buttons & 0x00080000);
+        setButtonFlag(ControllerPacket.RIGHT_FLAG,          buttons & 0x00040000);
 
-            int _leftStickX  = buffer.get(6) & 0xFF | ((buffer.get(7) & 0x0F) << 8);
-            int _leftStickY  = ((buffer.get(7) & 0xF0) >> 4) | (buffer.get(8) << 4);
-            int _rightStickX = buffer.get(9) & 0xFF | ((buffer.get(10) & 0x0F) << 8);
-            int _rightStickY = ((buffer.get(10) & 0xF0) >> 4) | (buffer.get(11) << 4);
+        leftTrigger  = ((buttons & 0x00800000) != 0) ? 1 : 0; // ZL
+        rightTrigger = ((buttons & 0x00000080) != 0) ? 1 : 0; // ZR
 
-            leftStickX  = applyStickCalibration(_leftStickX,   0, 0);
-            leftStickY  = applyStickCalibration(-_leftStickY-1, 0, 1);
-            rightStickX = applyStickCalibration(_rightStickX,   1, 0);
-            rightStickY = applyStickCalibration(-_rightStickY-1, 1, 1);
+        int lsRaw = (buf.get(10) & 0xFF) | ((buf.get(11) & 0xFF) << 8) | ((buf.get(12) & 0xFF) << 16);
+        int rsRaw = (buf.get(13) & 0xFF) | ((buf.get(14) & 0xFF) << 8) | ((buf.get(15) & 0xFF) << 16);
+        leftStickX  =  ((lsRaw & 0xFFF) - 2048) / 2048.0f;
+        leftStickY  = -(((lsRaw >> 12) & 0xFFF) - 2048) / 2048.0f;
+        rightStickX =  ((rsRaw & 0xFFF) - 2048) / 2048.0f;
+        rightStickY = -(((rsRaw >> 12) & 0xFFF) - 2048) / 2048.0f;
 
-            if (buffer.remaining() >= 49 && reportId == 0x30) {
-                accelX = buffer.getShort(37) / 4096.0f;
-                accelY = buffer.getShort(39) / 4096.0f;
-                accelZ = buffer.getShort(41) / 4096.0f;
-                gyroZ  = -buffer.getShort(43) / 16.0f;
-                gyroX  = -buffer.getShort(45) / 16.0f;
-                gyroY  =  buffer.getShort(47) / 16.0f;
-            }
-            return true;
+        if (buf.limit() >= 60) {
+            accelX = buf.getShort(48) / 4096.0f;
+            accelY = buf.getShort(50) / 4096.0f;
+            accelZ = buf.getShort(52) / 4096.0f;
+            gyroX  = buf.getShort(54) / 16.0f;
+            gyroZ  = buf.getShort(56) / 16.0f;
+            gyroY  = -buf.getShort(58) / 16.0f;
         }
-        return false;
-    }
-
-    private void applyDefaultCalibration(int stick) {
-        for (int axis = 0; axis < 2; axis++) {
-            stickCalibration[stick][axis][0] = 0x000;
-            stickCalibration[stick][axis][1] = 0x800;
-            stickCalibration[stick][axis][2] = 0xFFF;
-            stickExtends[stick][axis][0] = -0x700;
-            stickExtends[stick][axis][1] = 0x700;
-        }
-    }
-
-    private float applyStickCalibration(int value, int stick, int axis) {
-        int center = stickCalibration[stick][axis][1];
-        if (value < 0) value += 0x1000;
-        value -= center;
-        if (value < stickExtends[stick][axis][0]) { stickExtends[stick][axis][0] = value; return -1; }
-        if (value > stickExtends[stick][axis][1]) { stickExtends[stick][axis][1] = value; return  1; }
-        if (value > 0) return value / stickExtends[stick][axis][1];
-        else           return -value / stickExtends[stick][axis][0];
+        return true;
     }
 }
