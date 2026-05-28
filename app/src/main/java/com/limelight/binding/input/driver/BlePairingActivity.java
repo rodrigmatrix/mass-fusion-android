@@ -190,6 +190,11 @@ public class BlePairingActivity extends Activity {
                 SharedPreferences prefs = getSharedPreferences("ble_prefs", Context.MODE_PRIVATE);
                 prefs.edit().putString(PREF_PAIRED_BLE_CONTROLLER, result.getDevice().getAddress()).apply();
 
+                // Start the background service immediately so it connects to the controller
+                // and keeps it awake, preventing the blinking lights from timing out!
+                Intent serviceIntent = new Intent(BlePairingActivity.this, BleDriverService.class);
+                startService(serviceIntent);
+
                 Toast.makeText(BlePairingActivity.this, "Paired successfully with Pro Controller 2!", Toast.LENGTH_SHORT).show();
                 finish();
             }

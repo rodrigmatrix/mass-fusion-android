@@ -110,6 +110,12 @@ public class BleDriverService extends Service implements UsbDriverListener {
     }
 
     @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        start();
+        return START_STICKY;
+    }
+
+    @Override
     public void onDestroy() {
         stop();
         listener = null;
