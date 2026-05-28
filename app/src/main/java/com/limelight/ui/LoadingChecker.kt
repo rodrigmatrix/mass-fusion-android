@@ -19,6 +19,8 @@ object LoadingChecker {
 
     private val videoMap = mapOf(
         "Nintendo Switch" to "switch_loading.mp4",
+        "Nintendo Switch 2" to "switch_loading.mp4",
+        "Switch 2" to "switch_loading.mp4",
         "Desktop" to "windows.mp4",
         "Virtual Display" to "windows.mp4",
         "Xbox" to "xbox.mp4",
