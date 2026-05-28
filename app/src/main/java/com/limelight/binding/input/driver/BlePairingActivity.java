@@ -1,6 +1,7 @@
 package com.limelight.binding.input.driver;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
@@ -146,6 +147,7 @@ public class BlePairingActivity extends Activity {
     }
 
     private final ScanCallback leScanCallback = new ScanCallback() {
+        @SuppressLint("MissingPermission")
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
             if (!mScanning) return;
@@ -179,14 +181,10 @@ public class BlePairingActivity extends Activity {
                     // Ignore
                 }
 
-                // Bond with the device so it remembers the phone
-                if (result.getDevice().getBondState() != BluetoothDevice.BOND_BONDED) {
-                    try {
-                        result.getDevice().createBond();
-                    } catch (SecurityException e) {
-                        LimeLog.warning("SecurityException creating bond: " + e.getMessage());
-                    }
-                }
+                // We INTENTIONALLY do not call createBond() here.
+                // The reason this controller doesn't show up in Android's Bluetooth menu
+                // is likely because it rejects standard Android bonding protocols.
+                // We will connect directly via GATT when the stream starts instead!
 
                 // Save MAC address to preferences
                 SharedPreferences prefs = getSharedPreferences("ble_prefs", Context.MODE_PRIVATE);
