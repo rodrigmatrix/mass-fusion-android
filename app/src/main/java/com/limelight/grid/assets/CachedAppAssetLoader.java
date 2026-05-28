@@ -356,7 +356,7 @@ public class CachedAppAssetLoader {
         if (app.getAppName().equals("Virtual Display") || app.getAppName().equals("Desktop")) {
             imgView.setVisibility(View.VISIBLE);
             imgView.setImageBitmap(BitmapFactory.decodeResource(imgView.getResources(), R.drawable.ic_windows));
-            textView.setVisibility(View.VISIBLE);
+            textView.setVisibility(View.GONE);
             return true;
         }
 
