@@ -186,7 +186,8 @@ public class ProConBleDriver extends AbstractController {
                     // Basic init
                     sendSubcommand((byte)0x40, new byte[]{0x01}); // Enable IMU
                     sendSubcommand((byte)0x48, new byte[]{0x01}); // Enable Vibration
-                    sendSubcommand((byte)0x30, new byte[]{0x30}); // Input mode 0x30
+                    sendSubcommand((byte)0x30, new byte[]{0x01}); // Player 1 LED
+                    sendSubcommand((byte)0x03, new byte[]{0x30}); // Input mode 0x30
                 } else {
                     LimeLog.warning("ProConBleDriver: Required characteristics not found.");
                 }
