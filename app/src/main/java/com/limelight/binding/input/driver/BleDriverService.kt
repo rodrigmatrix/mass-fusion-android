@@ -16,6 +16,7 @@ class BleDriverService : Service(), UsbDriverListener {
     private val controllers = ArrayList<AbstractController>()
     private var listener: UsbDriverListener? = null
     private var nextDeviceId = 100 // Start at 100 to avoid conflict with USB devices
+    private val connectedAddresses = HashSet<String>()
 
     override fun reportControllerState(
         controllerId: Int,
@@ -51,6 +52,9 @@ class BleDriverService : Service(), UsbDriverListener {
 
     override fun deviceRemoved(controller: AbstractController) {
         controllers.remove(controller)
+        if (controller is ProConBleDriver) {
+            connectedAddresses.remove(controller.address)
+        }
         if (controllers.isEmpty()) {
             started = false
         }
@@ -79,33 +83,34 @@ class BleDriverService : Service(), UsbDriverListener {
     }
 
     private fun start() {
-        if (started && controllers.isNotEmpty()) {
-            LimeLog.info("BleDriverService: start() called but already started, ignoring.")
-            return
-        }
-        if (started) {
+        if (started && controllers.isEmpty()) {
             LimeLog.info("BleDriverService: recovering from stale started state.")
             started = false
         }
 
-        val mac = getSharedPreferences("ble_prefs", Context.MODE_PRIVATE)
-            .getString(BlePairingActivity.PREF_PAIRED_BLE_CONTROLLER, null)
+        val pairedControllers = Switch2ControllerMappings.getPairedControllers(this)
         val adapter = bluetoothAdapter
 
-        LimeLog.info("BleDriverService: start() - mac=$mac btAdapter=${if (adapter != null) "ok" else "null"}")
+        LimeLog.info("BleDriverService: start() - controllers=$pairedControllers btAdapter=${if (adapter != null) "ok" else "null"}")
 
-        if (mac != null && adapter != null && adapter.isEnabled) {
-            val device = adapter.getRemoteDevice(mac)
-            LimeLog.info("BleDriverService attempting to connect to $mac")
-            val controller = ProConBleDriver(this, device, nextDeviceId++, this)
-            if (controller.start()) {
-                controllers.add(controller)
-                started = true
-            } else {
-                LimeLog.warning("BleDriverService: ProConBleDriver.start() returned false for $mac")
+        if (pairedControllers.isNotEmpty() && adapter != null && adapter.isEnabled) {
+            for (mac in pairedControllers) {
+                if (connectedAddresses.contains(mac)) {
+                    continue
+                }
+                val device = adapter.getRemoteDevice(mac)
+                LimeLog.info("BleDriverService attempting to connect to $mac")
+                val controller = ProConBleDriver(this, device, nextDeviceId++, this)
+                if (controller.start()) {
+                    controllers.add(controller)
+                    connectedAddresses.add(mac)
+                    started = true
+                } else {
+                    LimeLog.warning("BleDriverService: ProConBleDriver.start() returned false for $mac")
+                }
             }
         } else {
-            LimeLog.warning("BleDriverService: cannot connect - mac=$mac btEnabled=${adapter?.isEnabled == true}")
+            LimeLog.warning("BleDriverService: cannot connect - controllers=$pairedControllers btEnabled=${adapter?.isEnabled == true}")
         }
     }
 
@@ -116,6 +121,7 @@ class BleDriverService : Service(), UsbDriverListener {
         while (controllers.isNotEmpty()) {
             controllers.removeAt(0).stop()
         }
+        connectedAddresses.clear()
     }
 
     override fun onCreate() {

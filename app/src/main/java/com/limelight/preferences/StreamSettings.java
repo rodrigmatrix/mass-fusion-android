@@ -863,7 +863,7 @@ public class StreamSettings extends AppCompatActivity {
                 _pref.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
                     @Override
                     public boolean onPreferenceClick(@NonNull Preference preference) {
-                        Intent intent = new Intent(requireActivity(), com.limelight.binding.input.driver.BlePairingActivity.class);
+                        Intent intent = new Intent(requireActivity(), com.limelight.binding.input.driver.Switch2ControllersActivity.class);
                         requireActivity().startActivity(intent);
                         return false;
                     }

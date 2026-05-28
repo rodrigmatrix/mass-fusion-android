@@ -7,6 +7,7 @@ import java.net.UnknownHostException;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.limelight.binding.PlatformBinding;
 import com.limelight.binding.crypto.AndroidCryptoProvider;
+import com.limelight.binding.input.driver.Switch2ControllersActivity;
 import com.limelight.computers.ComputerManagerListener;
 import com.limelight.computers.ComputerManagerService;
 import com.limelight.grid.PcGridAdapter;
@@ -155,6 +156,7 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
 
         // Setup the list view
         ImageButton settingsButton = findViewById(R.id.settingsButton);
+        ImageButton controllerButton = findViewById(R.id.controllerButton);
         ImageButton addComputerButton = findViewById(R.id.manuallyAddPc);
         ImageButton helpButton = findViewById(R.id.helpButton);
         ExtendedFloatingActionButton profilesButton = findViewById(R.id.profilesButton);
@@ -163,6 +165,12 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
             @Override
             public void onClick(View v) {
                 startActivity(new Intent(PcView.this, StreamSettings.class));
+            }
+        });
+        controllerButton.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(PcView.this, Switch2ControllersActivity.class));
             }
         });
         addComputerButton.setOnClickListener(new OnClickListener() {

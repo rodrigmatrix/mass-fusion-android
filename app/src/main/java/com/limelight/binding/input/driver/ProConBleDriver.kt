@@ -27,6 +27,7 @@ class ProConBleDriver(
     deviceId: Int,
     listener: UsbDriverListener,
 ) : AbstractController(deviceId, listener, USB_VENDOR_NINTENDO, USB_PRODUCT_SWITCH_PRO_2) {
+    val address: String = device?.address ?: ""
     private var gatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var notifyCharacteristic: BluetoothGattCharacteristic? = null
@@ -57,23 +58,7 @@ class ProConBleDriver(
                 MoonBridge.LI_CCAP_ACCEL.toInt() or
                 MoonBridge.LI_CCAP_RUMBLE.toInt()
             ).toShort()
-        supportedButtonFlags =
-            ControllerPacket.A_FLAG or
-                ControllerPacket.B_FLAG or
-                ControllerPacket.X_FLAG or
-                ControllerPacket.Y_FLAG or
-                ControllerPacket.UP_FLAG or
-                ControllerPacket.DOWN_FLAG or
-                ControllerPacket.LEFT_FLAG or
-                ControllerPacket.RIGHT_FLAG or
-                ControllerPacket.LB_FLAG or
-                ControllerPacket.RB_FLAG or
-                ControllerPacket.LS_CLK_FLAG or
-                ControllerPacket.RS_CLK_FLAG or
-                ControllerPacket.BACK_FLAG or
-                ControllerPacket.PLAY_FLAG or
-                ControllerPacket.SPECIAL_BUTTON_FLAG or
-                ControllerPacket.MISC_FLAG
+        supportedButtonFlags = Switch2ControllerMappings.supportedButtonFlags()
     }
 
     @SuppressLint("MissingPermission")
@@ -337,23 +322,7 @@ class ProConBleDriver(
 
         val buttons = buf.getInt(4)
 
-        buttonFlags = 0
-        setButtonFlag(ControllerPacket.A_FLAG, buttons and 0x00000008)
-        setButtonFlag(ControllerPacket.B_FLAG, buttons and 0x00000004)
-        setButtonFlag(ControllerPacket.X_FLAG, buttons and 0x00000002)
-        setButtonFlag(ControllerPacket.Y_FLAG, buttons and 0x00000001)
-        setButtonFlag(ControllerPacket.LB_FLAG, buttons and 0x00400000)
-        setButtonFlag(ControllerPacket.RB_FLAG, buttons and 0x00000040)
-        setButtonFlag(ControllerPacket.BACK_FLAG, buttons and 0x00000100)
-        setButtonFlag(ControllerPacket.PLAY_FLAG, buttons and 0x00000200)
-        setButtonFlag(ControllerPacket.LS_CLK_FLAG, buttons and 0x00000800)
-        setButtonFlag(ControllerPacket.RS_CLK_FLAG, buttons and 0x00000400)
-        setButtonFlag(ControllerPacket.SPECIAL_BUTTON_FLAG, buttons and 0x00001000)
-        setButtonFlag(ControllerPacket.MISC_FLAG, buttons and 0x00002000)
-        setButtonFlag(ControllerPacket.UP_FLAG, buttons and 0x00020000)
-        setButtonFlag(ControllerPacket.DOWN_FLAG, buttons and 0x00010000)
-        setButtonFlag(ControllerPacket.LEFT_FLAG, buttons and 0x00080000)
-        setButtonFlag(ControllerPacket.RIGHT_FLAG, buttons and 0x00040000)
+        buttonFlags = Switch2ControllerMappings.mapButtons(context, address, buttons)
 
         leftTrigger = if ((buttons and 0x00800000) != 0) 1f else 0f
         rightTrigger = if ((buttons and 0x00000080) != 0) 1f else 0f
@@ -572,7 +541,12 @@ class ProConBleDriver(
             ControllerPacket.BACK_FLAG to "MINUS",
             ControllerPacket.PLAY_FLAG to "PLUS",
             ControllerPacket.SPECIAL_BUTTON_FLAG to "HOME",
+            ControllerPacket.TOUCHPAD_FLAG to "TOUCHPAD",
             ControllerPacket.MISC_FLAG to "CAPTURE",
+            ControllerPacket.PADDLE1_FLAG to "PADDLE1",
+            ControllerPacket.PADDLE2_FLAG to "PADDLE2",
+            ControllerPacket.PADDLE3_FLAG to "PADDLE3",
+            ControllerPacket.PADDLE4_FLAG to "PADDLE4",
         )
         private val RAW_BUTTON_LOG_NAMES = listOf(
             0x00000008 to "A",
@@ -589,6 +563,7 @@ class ProConBleDriver(
             0x00000400 to "R_STICK",
             0x00001000 to "HOME",
             0x00002000 to "CAPTURE",
+            0x00004000 to "GAMECHAT",
             0x00020000 to "DPAD_UP",
             0x00010000 to "DPAD_DOWN",
             0x00080000 to "DPAD_LEFT",

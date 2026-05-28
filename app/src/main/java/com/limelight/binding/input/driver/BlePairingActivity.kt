@@ -52,7 +52,8 @@ class BlePairingActivity : Activity() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
         } else {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         }
     }
 
@@ -60,7 +61,7 @@ class BlePairingActivity : Activity() {
         val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
         } else {
-            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         }
         ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE)
     }
@@ -145,10 +146,7 @@ class BlePairingActivity : Activity() {
                 } catch (_: SecurityException) {
                 }
 
-                getSharedPreferences("ble_prefs", Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(PREF_PAIRED_BLE_CONTROLLER, result.device.address)
-                    .apply()
+                Switch2ControllerMappings.addPairedController(this@BlePairingActivity, result.device.address, deviceName)
 
                 LimeLog.info("BlePairingActivity: Starting BleDriverService!")
                 startService(Intent(this@BlePairingActivity, BleDriverService::class.java))
