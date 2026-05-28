@@ -150,15 +150,17 @@ public class BlePairingActivity extends Activity {
         public void onScanResult(int callbackType, ScanResult result) {
             if (!mScanning) return;
             
-            // Validate the result by name or manufacturer data
             String deviceName = result.getDevice().getName();
+            if (deviceName == null && result.getScanRecord() != null) {
+                deviceName = result.getScanRecord().getDeviceName();
+            }
+
+            LimeLog.info("BLE Scanner saw device: " + result.getDevice().getAddress() + " Name: " + deviceName);
+
             boolean isProController = false;
 
-            if (deviceName != null) {
-                LimeLog.info("Discovered BLE device: " + deviceName);
-                if (deviceName.toLowerCase().contains("pro controller")) {
-                    isProController = true;
-                }
+            if (deviceName != null && deviceName.toLowerCase().contains("pro controller")) {
+                isProController = true;
             }
 
             SparseArray<byte[]> manufacturerData = result.getScanRecord() != null ? result.getScanRecord().getManufacturerSpecificData() : null;
