@@ -255,6 +255,22 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
     };
 
+    private boolean connectedToBleDriverService = false;
+    private ServiceConnection bleDriverServiceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            com.limelight.binding.input.driver.BleDriverService.BleDriverBinder binder = (com.limelight.binding.input.driver.BleDriverService.BleDriverBinder) iBinder;
+            binder.setListener(controllerHandler);
+            binder.start();
+            connectedToBleDriverService = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            connectedToBleDriverService = false;
+        }
+    };
+
     public static final String EXTRA_HOST = "Host";
     public static final String EXTRA_PORT = "Port";
     public static final String EXTRA_HTTPS_PORT = "HttpsPort";
@@ -1795,6 +1811,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         if (connectedToUsbDriverService) {
             // Unbind from the discovery service
             unbindService(usbDriverServiceConnection);
+        }
+
+        if (connectedToBleDriverService) {
+            unbindService(bleDriverServiceConnection);
         }
 
         // Destroy the capture provider
@@ -3823,6 +3843,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             bindService(new Intent(this, UsbDriverService.class),
                     usbDriverServiceConnection, Service.BIND_AUTO_CREATE);
         }
+
+        // Start the BLE driver
+        bindService(new Intent(this, com.limelight.binding.input.driver.BleDriverService.class),
+                bleDriverServiceConnection, Service.BIND_AUTO_CREATE);
 
         // Report this shortcut being used (off the main thread to prevent ANRs)
         ComputerDetails computer = new ComputerDetails();

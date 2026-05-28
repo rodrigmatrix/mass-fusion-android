@@ -221,6 +221,8 @@
     <string name="summary_checkbox_enable_audiofx">Allows audio effects to function while streaming, but may increase audio latency</string>
 
     <string name="category_gamepad_settings">Gamepad Settings</string>
+    <string name="title_pair_pro_controller">Pair Switch Pro Controller</string>
+    <string name="summary_pair_pro_controller">Scan and pair a Nintendo Switch Pro Controller via BLE</string>
     <string name="title_checkbox_multi_controller">Automatic gamepad presence detection</string>
     <string name="summary_checkbox_multi_controller">Unchecking this option forces a gamepad to always be present</string>
     <string name="title_checkbox_vibrate_fallback">Emulate rumble support with vibration</string>

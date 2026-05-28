@@ -243,6 +243,11 @@
         android:title="@string/category_gamepad_settings"
         app:initialExpandedChildrenCount="1"
         app:iconSpaceReserved="false">
+        <Preference
+            android:key="pref_pair_pro_controller"
+            android:title="@string/title_pair_pro_controller"
+            android:summary="@string/summary_pair_pro_controller"
+            app:iconSpaceReserved="false" />
         <com.limelight.preferences.SeekBarPreference
             android:defaultValue="5"
             android:key="seekbar_deadzone"
