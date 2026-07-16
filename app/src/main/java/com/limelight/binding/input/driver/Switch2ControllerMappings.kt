@@ -6,6 +6,14 @@ import com.limelight.nvstream.input.ControllerPacket
 object Switch2ControllerMappings {
     const val PREFS_NAME = "ble_prefs"
     const val PREF_PAIRED_CONTROLLERS = "paired_ble_controller_macs"
+    const val NINTENDO_VENDOR_ID = 0x057e
+    const val PRODUCT_JOYCON_2_RIGHT = 0x2066
+    const val PRODUCT_JOYCON_2_LEFT = 0x2067
+    const val PRODUCT_JOYCON_L = 0x2006
+    const val PRODUCT_JOYCON_R = 0x2007
+    const val PRODUCT_PRO_CONTROLLER_2 = 0x2069
+    const val PRODUCT_NSO_GAMECUBE_CONTROLLER = 0x2073
+    private const val PREF_COMBINE_JOYCONS = "combine_joycons"
 
     private const val TARGET_DEFAULT = -1
     private const val TARGET_NONE = 0
@@ -43,7 +51,7 @@ object Switch2ControllerMappings {
         TargetButton("R3", ControllerPacket.RS_CLK_FLAG),
         TargetButton("Minus / Back", ControllerPacket.BACK_FLAG),
         TargetButton("Plus / Start", ControllerPacket.PLAY_FLAG),
-        TargetButton("Home / PS", ControllerPacket.SPECIAL_BUTTON_FLAG),
+        TargetButton("Xbox / PS / Home", ControllerPacket.SPECIAL_BUTTON_FLAG),
         TargetButton("Touchpad", ControllerPacket.TOUCHPAD_FLAG),
         TargetButton("Misc / Capture", ControllerPacket.MISC_FLAG),
         TargetButton("Paddle 1", ControllerPacket.PADDLE1_FLAG),
@@ -126,14 +134,20 @@ object Switch2ControllerMappings {
         return (saved + listOfNotNull(legacy)).distinct()
     }
 
-    fun addPairedController(context: Context, address: String, name: String?) {
+    fun addPairedController(
+        context: Context,
+        address: String,
+        name: String?,
+        productId: Int = PRODUCT_PRO_CONTROLLER_2,
+    ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val controllers = getPairedControllers(context).toMutableSet()
         controllers.add(address)
         prefs.edit()
             .putString(BlePairingActivity.PREF_PAIRED_BLE_CONTROLLER, address)
             .putStringSet(PREF_PAIRED_CONTROLLERS, controllers)
-            .putString(nameKey(address), name ?: "Switch 2 Pro Controller")
+            .putString(nameKey(address), name ?: controllerNameForProduct(productId))
+            .putInt(productIdKey(address), productId)
             .apply()
     }
 
@@ -143,6 +157,7 @@ object Switch2ControllerMappings {
         val editor = prefs.edit()
             .putStringSet(PREF_PAIRED_CONTROLLERS, controllers)
             .remove(nameKey(address))
+            .remove(productIdKey(address))
         if (prefs.getString(BlePairingActivity.PREF_PAIRED_BLE_CONTROLLER, null) == address) {
             editor.putString(BlePairingActivity.PREF_PAIRED_BLE_CONTROLLER, controllers.firstOrNull())
         }
@@ -150,8 +165,51 @@ object Switch2ControllerMappings {
     }
 
     fun controllerName(context: Context, address: String): String {
+        val productId = controllerProductId(context, address)
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(nameKey(address), null) ?: "Switch 2 Pro Controller"
+            .getString(nameKey(address), null) ?: controllerNameForProduct(productId)
+    }
+
+    fun controllerProductId(context: Context, address: String): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(productIdKey(address), PRODUCT_PRO_CONTROLLER_2)
+    }
+
+    fun isSupportedProductId(productId: Int): Boolean {
+        return productId == PRODUCT_PRO_CONTROLLER_2 ||
+            productId == PRODUCT_JOYCON_2_LEFT ||
+            productId == PRODUCT_JOYCON_2_RIGHT ||
+            productId == PRODUCT_JOYCON_L ||
+            productId == PRODUCT_JOYCON_R ||
+            productId == PRODUCT_NSO_GAMECUBE_CONTROLLER
+    }
+
+    fun isJoyConLeft(productId: Int): Boolean = productId == PRODUCT_JOYCON_2_LEFT || productId == PRODUCT_JOYCON_L
+
+    fun isJoyConRight(productId: Int): Boolean = productId == PRODUCT_JOYCON_2_RIGHT || productId == PRODUCT_JOYCON_R
+
+    fun controllerNameForProduct(productId: Int): String {
+        return when (productId) {
+            PRODUCT_JOYCON_2_LEFT -> "Joy-Con 2 (Left)"
+            PRODUCT_JOYCON_2_RIGHT -> "Joy-Con 2 (Right)"
+            PRODUCT_JOYCON_L -> "Joy-Con (L)"
+            PRODUCT_JOYCON_R -> "Joy-Con (R)"
+            PRODUCT_NSO_GAMECUBE_CONTROLLER -> "NSO GameCube Controller"
+            PRODUCT_PRO_CONTROLLER_2 -> "Pro Controller 2"
+            else -> "Switch 2 Controller"
+        }
+    }
+
+    fun combineJoyCons(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(PREF_COMBINE_JOYCONS, true)
+    }
+
+    fun setCombineJoyCons(context: Context, combine: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(PREF_COMBINE_JOYCONS, combine)
+            .apply()
     }
 
     fun rawMaskText(context: Context, address: String, sourceId: String): String {
@@ -184,6 +242,10 @@ object Switch2ControllerMappings {
 
     private fun nameKey(address: String): String {
         return "switch2_${address.safeKey()}_name"
+    }
+
+    private fun productIdKey(address: String): String {
+        return "switch2_${address.safeKey()}_product_id"
     }
 
     private fun String.safeKey(): String = replace(":", "").lowercase()

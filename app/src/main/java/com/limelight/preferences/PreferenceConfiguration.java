@@ -58,6 +58,7 @@ public class PreferenceConfiguration {
     private static final String OSC_OPACITY_PREF_STRING = "seekbar_osc_opacity";
     private static final String LANGUAGE_PREF_STRING = "list_languages";
     private static final String SMALL_ICONS_PREF_STRING = "checkbox_small_icon_mode";
+    public static final String USE_TAILSCALE_PREF_STRING = "checkbox_use_tailscale";
     private static final String MULTI_CONTROLLER_PREF_STRING = "checkbox_multi_controller";
     static final String AUDIO_CONFIG_PREF_STRING = "list_audio_config";
     private static final String USB_DRIVER_PREF_SRING = "checkbox_usb_driver";
@@ -156,13 +157,14 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_MULTI_CONTROLLER = true;
     private static final boolean DEFAULT_USB_DRIVER = true;
     private static final String DEFAULT_VIDEO_FORMAT = "auto";
+    private static final boolean DEFAULT_USE_TAILSCALE = false;
 
     private static final boolean DEFAULT_ONSCREEN_CONTROLLER = false;
     private static final boolean DEFAULT_HIDE_OSC_WHEN_HAS_GAMEPAD = true;
     private static final boolean ONLY_L3_R3_DEFAULT = false;
     private static final boolean SHOW_GUIDE_BUTTON_DEFAULT = true;
     private static final boolean DEFAULT_ENABLE_HDR = false;
-    private static final boolean DEFAULT_ENABLE_PIP = false;
+    private static final boolean DEFAULT_ENABLE_PIP = true;
     private static final boolean DEFAULT_ENABLE_PERF_OVERLAY = false;
     private static final boolean DEFAULT_PERF_OVERLAY_BOTTOM = false;
     private static final boolean DEFAULT_ENABLE_PERF_LOGGING = false;
@@ -259,6 +261,7 @@ public class PreferenceConfiguration {
     public boolean smartClipboardSync;
     public boolean smartClipboardSyncToast;
     public boolean hideClipboardContent;
+    public boolean useTailscale;
     public boolean stickyModifierKey;
     public boolean onlyL3R3;
     public boolean showGuideButton;
@@ -883,6 +886,7 @@ private static int getFramePacingValue(Context context) {
         config.enableSops = prefs.getBoolean(SOPS_PREF_STRING, DEFAULT_SOPS);
         config.playHostAudio = prefs.getBoolean(HOST_AUDIO_PREF_STRING, DEFAULT_HOST_AUDIO);
         config.smallIconMode = prefs.getBoolean(SMALL_ICONS_PREF_STRING, getDefaultSmallMode(context));
+        config.useTailscale = prefs.getBoolean(USE_TAILSCALE_PREF_STRING, DEFAULT_USE_TAILSCALE);
         config.multiController = prefs.getBoolean(MULTI_CONTROLLER_PREF_STRING, DEFAULT_MULTI_CONTROLLER);
         config.usbDriver = prefs.getBoolean(USB_DRIVER_PREF_SRING, DEFAULT_USB_DRIVER);
         config.fullScreen = prefs.getBoolean(FULL_SCREEN_PREF_STRING, DEFAULT_FULL_SCREEN);
@@ -919,7 +923,7 @@ private static int getFramePacingValue(Context context) {
         config.onlyL3R3 = prefs.getBoolean(ONLY_L3_R3_PREF_STRING, ONLY_L3_R3_DEFAULT);
         config.showGuideButton = prefs.getBoolean(SHOW_GUIDE_BUTTON_PREF_STRING, SHOW_GUIDE_BUTTON_DEFAULT);
         config.enableHdr = prefs.getBoolean(ENABLE_HDR_PREF_STRING, DEFAULT_ENABLE_HDR) && !isShieldAtvFirmwareWithBrokenHdr();
-        config.enablePip = prefs.getBoolean(ENABLE_PIP_PREF_STRING, DEFAULT_ENABLE_PIP);
+        config.enablePip = true;
         config.enablePerfOverlay = prefs.getBoolean(ENABLE_PERF_OVERLAY_STRING, DEFAULT_ENABLE_PERF_OVERLAY);
         config.enablePerfLogging = prefs.getBoolean(ENABLE_PERF_LOGGING, DEFAULT_ENABLE_PERF_LOGGING);
         config.enablePerfOverlayLite = prefs.getBoolean("checkbox_enable_perf_overlay_lite",DEFAULT_ENABLE_PERF_OVERLAY);

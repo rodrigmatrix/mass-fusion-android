@@ -67,6 +67,7 @@ public class ComputerDetails {
     public AddressTuple remoteAddress;
     public AddressTuple manualAddress;
     public AddressTuple ipv6Address;
+    public AddressTuple tailscaleAddress;
     public String macAddress;
     public X509Certificate serverCert;
 
@@ -112,6 +113,9 @@ public class ComputerDetails {
         else if (ipv6Address != null) {
             return ipv6Address.port;
         }
+        else if (tailscaleAddress != null) {
+            return tailscaleAddress.port;
+        }
         else if (localAddress != null) {
             return localAddress.port;
         }
@@ -146,6 +150,9 @@ public class ComputerDetails {
         }
         if (details.ipv6Address != null) {
             this.ipv6Address = details.ipv6Address;
+        }
+        if (details.tailscaleAddress != null) {
+            this.tailscaleAddress = details.tailscaleAddress;
         }
         if (details.macAddress != null && !details.macAddress.equals("00:00:00:00:00:00")) {
             this.macAddress = details.macAddress;

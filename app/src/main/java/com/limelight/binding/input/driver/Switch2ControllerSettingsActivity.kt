@@ -2,19 +2,19 @@ package com.limelight.binding.input.driver
 
 import android.app.Activity
 import android.os.Bundle
-import android.text.InputType
-import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.Spinner
-import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
-class Switch2ControllerSettingsActivity : Activity() {
+class Switch2ControllerSettingsActivity : ComponentActivity() {
     private lateinit var address: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,115 +23,140 @@ class Switch2ControllerSettingsActivity : Activity() {
             finish()
             return
         }
-        title = "Controller Settings"
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
-        }
-
-        root.addView(TextView(this).apply {
-            text = Switch2ControllerMappings.controllerName(this@Switch2ControllerSettingsActivity, address)
-            textSize = 20f
-        })
-        root.addView(TextView(this).apply {
-            text = address
-            textSize = 14f
-            setPadding(0, 0, 0, 24)
-        })
-
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        for (source in Switch2ControllerMappings.sourceButtons(this, address)) {
-            content.addView(createMappingRow(source))
-            if (source.editableRawMask) {
-                content.addView(createRawMaskRow(source))
-            }
-        }
-
-        ScrollView(this).apply {
-            addView(content)
-            root.addView(this, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        }
-
-        Button(this).apply {
-            text = "Done"
-            setOnClickListener { finish() }
-            root.addView(this, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        }
-
-        setContentView(root)
-    }
-
-    private fun createMappingRow(source: Switch2ControllerMappings.SourceButton): LinearLayout {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 8)
-        }
-        row.addView(TextView(this).apply {
-            text = source.label
-            textSize = 16f
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-        val targets = Switch2ControllerMappings.targetButtons
-        val spinner = Spinner(this)
-        spinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            targets.map { it.label },
-        )
-        val currentTarget = Switch2ControllerMappings.targetFor(this, address, source)
-        spinner.setSelection(targets.indexOfFirst { it.flag == currentTarget }.coerceAtLeast(0))
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                Switch2ControllerMappings.setTarget(
-                    this@Switch2ControllerSettingsActivity,
-                    address,
-                    source.id,
-                    targets[position].flag,
+        setContent {
+            com.limelight.ui.theme.MassFusionTheme {
+                ControllerSettingsScreen(
+                    address = address,
+                    onDone = { finish() }
                 )
             }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        row.addView(spinner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        return row
-    }
-
-    private fun createRawMaskRow(source: Switch2ControllerMappings.SourceButton): LinearLayout {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(32, 0, 0, 16)
-        }
-        row.addView(TextView(this).apply {
-            text = "${source.label} raw mask"
-            textSize = 14f
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT
-            hint = "0x00000000"
-            setSingleLine(true)
-            setText(Switch2ControllerMappings.rawMaskText(this@Switch2ControllerSettingsActivity, address, source.id))
-        }
-        row.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(Button(this).apply {
-            text = "Save"
-            setOnClickListener {
-                try {
-                    val mask = Switch2ControllerMappings.parseRawMask(input.text.toString())
-                    Switch2ControllerMappings.setRawMask(this@Switch2ControllerSettingsActivity, address, source.id, mask)
-                    Toast.makeText(this@Switch2ControllerSettingsActivity, "Saved", Toast.LENGTH_SHORT).show()
-                } catch (_: NumberFormatException) {
-                    Toast.makeText(this@Switch2ControllerSettingsActivity, "Use a hex value like 0x4000", Toast.LENGTH_LONG).show()
-                }
-            }
-        })
-        return row
     }
 
     companion object {
         const val EXTRA_ADDRESS = "address"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ControllerSettingsScreen(address: String, onDone: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val controllerName = remember { Switch2ControllerMappings.controllerName(context, address) }
+    val sources = remember { Switch2ControllerMappings.sourceButtons(context, address) }
+    
+    Scaffold(
+        topBar = {
+            TopAppBar(title = { Text("Controller Settings") })
+        },
+        bottomBar = {
+            Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+                    Text("Done")
+                }
+            }
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
+            Text(text = controllerName, style = MaterialTheme.typography.titleLarge)
+            Text(text = address, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            sources.forEach { source ->
+                MappingRow(address = address, source = source)
+                if (source.editableRawMask) {
+                    RawMaskRow(address = address, source = source)
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun MappingRow(address: String, source: Switch2ControllerMappings.SourceButton) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val targets = Switch2ControllerMappings.targetButtons
+    var expanded by remember { mutableStateOf(false) }
+    
+    val initialTargetFlag = remember { Switch2ControllerMappings.targetFor(context, address, source) }
+    val initialTargetIndex = targets.indexOfFirst { it.flag == initialTargetFlag }.coerceAtLeast(0)
+    var selectedTarget by remember { mutableStateOf(targets[initialTargetIndex]) }
+    
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = source.label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f)
+        )
+        
+        Box(modifier = Modifier.weight(1f)) {
+            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(selectedTarget.label)
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                targets.forEach { target ->
+                    DropdownMenuItem(
+                        text = { Text(target.label) },
+                        onClick = {
+                            selectedTarget = target
+                            Switch2ControllerMappings.setTarget(context, address, source.id, target.flag)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RawMaskRow(address: String, source: Switch2ControllerMappings.SourceButton) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var maskText by remember { mutableStateOf(Switch2ControllerMappings.rawMaskText(context, address, source.id)) }
+    
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "${source.label} raw mask",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        
+        OutlinedTextField(
+            value = maskText,
+            onValueChange = { maskText = it },
+            singleLine = true,
+            modifier = Modifier.weight(1f).padding(end = 8.dp)
+        )
+        
+        Button(
+            onClick = {
+                try {
+                    val mask = Switch2ControllerMappings.parseRawMask(maskText)
+                    Switch2ControllerMappings.setRawMask(context, address, source.id, mask)
+                    Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()
+                } catch (_: NumberFormatException) {
+                    Toast.makeText(context, "Use a hex value like 0x4000", Toast.LENGTH_LONG).show()
+                }
+            }
+        ) {
+            Text("Save")
+        }
     }
 }

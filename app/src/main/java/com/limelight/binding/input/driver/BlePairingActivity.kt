@@ -4,7 +4,9 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
@@ -19,19 +21,83 @@ import android.os.Looper
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.limelight.LimeLog
 
-class BlePairingActivity : Activity() {
+class BlePairingActivity : ComponentActivity() {
+    private var uiMessage by mutableStateOf("Initializing...")
     private var bluetoothAdapter: BluetoothAdapter? = null
+    private var bluetoothManager: BluetoothManager? = null
     private var bluetoothLeScanner: BluetoothLeScanner? = null
-    private var scanning = false
+    private var scanning by mutableStateOf(false)
     private lateinit var handler: Handler
+    private var pairedControllers by mutableStateOf(listOf<String>())
+    private var connectedControllers by mutableStateOf(setOf<String>())
+
+    private val receiver = object : android.content.BroadcastReceiver() {
+        @SuppressLint("MissingPermission")
+        override fun onReceive(context: Context, intent: Intent) {
+            val action = intent.action
+            if (BluetoothDevice.ACTION_FOUND == action) {
+                val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                }
+                if (device != null) {
+                    val deviceName = device.name
+                    LimeLog.info("Classic BT Scanner saw device: ${device.address} Name: $deviceName")
+                    
+                    val productId = productIdFromDeviceName(deviceName)
+                    if (productId != null) {
+                        val controllerName = Switch2ControllerMappings.controllerNameForProduct(productId)
+                        LimeLog.info("Found Classic BT Controller: ${device.address} product=0x${productId.toString(16)} name=$deviceName")
+                        stopBleScan()
+
+                        // For Classic BT devices (like original Joy-Cons), we must bond natively
+                        try {
+                            if (device.bondState == BluetoothDevice.BOND_NONE) {
+                                device.createBond()
+                                Toast.makeText(this@BlePairingActivity, "Pairing with $controllerName...", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(this@BlePairingActivity, "$controllerName is already paired!", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: SecurityException) {
+                            LimeLog.warning("SecurityException creating bond: ${e.message}")
+                        }
+
+                        // Add to UI so user can see it paired in the app
+                        Switch2ControllerMappings.addPairedController(
+                            this@BlePairingActivity,
+                            device.address,
+                            deviceName ?: controllerName,
+                            productId,
+                        )
+                        refreshControllers()
+                    }
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handler = Handler(Looper.getMainLooper())
 
-        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val filter = android.content.IntentFilter(BluetoothDevice.ACTION_FOUND)
+        registerReceiver(receiver, filter)
+
+        bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
 
         if (bluetoothAdapter?.isEnabled != true) {
@@ -40,11 +106,123 @@ class BlePairingActivity : Activity() {
             return
         }
 
-        if (checkPermissions()) {
-            startBleScan()
-        } else {
-            requestPermissions()
+        refreshControllers()
+
+        setContent {
+            com.limelight.ui.theme.MassFusionTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Top
+                    ) {
+                        Text("Switch 2 Controllers", style = MaterialTheme.typography.headlineMedium)
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        if (pairedControllers.isEmpty()) {
+                            Text("No controllers paired.", style = MaterialTheme.typography.bodyLarge)
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                                items(pairedControllers) { mac ->
+                                    val name = Switch2ControllerMappings.controllerName(this@BlePairingActivity, mac)
+                                    val isConnected = connectedControllers.contains(mac)
+                                    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text(name, style = MaterialTheme.typography.titleMedium)
+                                                Text(mac, style = MaterialTheme.typography.bodyMedium)
+                                                Text(
+                                                    if (isConnected) "Connected" else "Disconnected",
+                                                    color = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                                    style = MaterialTheme.typography.labelLarge
+                                                )
+                                            }
+                                            Button(
+                                                onClick = { unpairController(mac) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                            ) {
+                                                Text("Disconnect")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(32.dp))
+                        
+                        if (scanning) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(uiMessage, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { stopBleScan() }) {
+                                Text("Stop Scanning")
+                            }
+                        } else {
+                            Button(onClick = { 
+                                if (checkPermissions()) {
+                                    startBleScan()
+                                } else {
+                                    requestPermissions()
+                                }
+                            }) {
+                                Text("Scan for New Controller")
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { finish() }) {
+                                Text("Close")
+                            }
+                        }
+                    }
+                }
+            }
         }
+        
+        // Auto-start scan if no controllers paired
+        if (pairedControllers.isEmpty()) {
+            if (checkPermissions()) {
+                startBleScan()
+            } else {
+                requestPermissions()
+            }
+        }
+    }
+    
+    private fun unpairController(mac: String) {
+        Switch2ControllerMappings.removePairedController(this, mac)
+        
+        // Restart the BleDriverService so it drops the connection
+        val intent = Intent(this, BleDriverService::class.java)
+        stopService(intent)
+        val remaining = Switch2ControllerMappings.getPairedControllers(this)
+        if (remaining.isNotEmpty()) {
+            startService(intent)
+        }
+        
+        refreshControllers()
+    }
+
+    private fun refreshControllers() {
+        pairedControllers = Switch2ControllerMappings.getPairedControllers(this)
+        
+        // Check connection status
+        val connected = mutableSetOf<String>()
+        if (checkPermissions()) {
+            try {
+                val devices = bluetoothManager?.getConnectedDevices(BluetoothProfile.GATT) ?: emptyList()
+                for (device in devices) {
+                    connected.add(device.address)
+                }
+            } catch (e: SecurityException) {
+                // Ignore
+            }
+        }
+        connectedControllers = connected
     }
 
     private fun checkPermissions(): Boolean {
@@ -66,13 +244,15 @@ class BlePairingActivity : Activity() {
         ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                startBleScan()
+                refreshControllers()
+                if (pairedControllers.isEmpty()) {
+                    startBleScan()
+                }
             } else {
                 Toast.makeText(this, "Permissions required to scan for BLE controllers", Toast.LENGTH_SHORT).show()
-                finish()
             }
             return
         }
@@ -86,26 +266,19 @@ class BlePairingActivity : Activity() {
 
         if (scanner == null) {
             Toast.makeText(this, "BLE scanning is not supported on this device", Toast.LENGTH_LONG).show()
-            finish()
             return
         }
 
-        Toast.makeText(this, "Scanning for Switch Pro Controller...", Toast.LENGTH_LONG).show()
+        uiMessage = "Scanning for Switch 2 and Joy-Con controllers..."
 
         handler.postDelayed({
             if (scanning) {
-                scanning = false
-                try {
-                    scanner.stopScan(leScanCallback)
-                } catch (e: SecurityException) {
-                    LimeLog.warning("SecurityException stopping scan: ${e.message}")
-                }
+                stopBleScan()
                 Toast.makeText(
                     this,
                     "Could not find controller. Make sure it is in pairing mode.",
                     Toast.LENGTH_LONG,
                 ).show()
-                finish()
             }
         }, SCAN_PERIOD)
 
@@ -116,10 +289,24 @@ class BlePairingActivity : Activity() {
 
         try {
             scanner.startScan(null, settings, leScanCallback)
+            // Start classic discovery for Joy-Con 1
+            adapter.startDiscovery()
         } catch (e: SecurityException) {
             LimeLog.warning("SecurityException starting scan: ${e.message}")
             Toast.makeText(this, "Permission error starting scan", Toast.LENGTH_SHORT).show()
-            finish()
+            scanning = false
+        }
+    }
+    
+    private fun stopBleScan() {
+        if (scanning) {
+            scanning = false
+            try {
+                bluetoothLeScanner?.stopScan(leScanCallback)
+                bluetoothAdapter?.cancelDiscovery()
+            } catch (e: SecurityException) {
+                LimeLog.warning("SecurityException stopping scan: ${e.message}")
+            }
         }
     }
 
@@ -135,24 +322,29 @@ class BlePairingActivity : Activity() {
 
             LimeLog.info("BLE Scanner saw device: ${result.device.address} Name: $deviceName")
 
-            val isProController = isProController2Advertisement(result) ||
-                deviceName?.lowercase()?.contains("pro controller") == true
+            val productId = supportedControllerProductId(result)
+                ?: productIdFromDeviceName(deviceName)
 
-            if (isProController) {
-                LimeLog.info("Found Nintendo Switch BLE Controller: ${result.device.address} name: $deviceName")
-                scanning = false
-                try {
-                    bluetoothLeScanner?.stopScan(this)
-                } catch (_: SecurityException) {
-                }
+            if (productId != null) {
+                val controllerName = Switch2ControllerMappings.controllerNameForProduct(productId)
+                LimeLog.info(
+                    "Found Nintendo Switch BLE Controller: ${result.device.address} " +
+                        "product=0x${productId.toString(16)} name=$deviceName",
+                )
+                stopBleScan()
 
-                Switch2ControllerMappings.addPairedController(this@BlePairingActivity, result.device.address, deviceName)
+                Switch2ControllerMappings.addPairedController(
+                    this@BlePairingActivity,
+                    result.device.address,
+                    deviceName ?: controllerName,
+                    productId,
+                )
 
                 LimeLog.info("BlePairingActivity: Starting BleDriverService!")
                 startService(Intent(this@BlePairingActivity, BleDriverService::class.java))
 
-                Toast.makeText(this@BlePairingActivity, "Paired successfully with Pro Controller 2!", Toast.LENGTH_SHORT).show()
-                finish()
+                Toast.makeText(this@BlePairingActivity, "Paired successfully with $controllerName!", Toast.LENGTH_SHORT).show()
+                refreshControllers()
             }
         }
 
@@ -161,24 +353,41 @@ class BlePairingActivity : Activity() {
             if (scanning) {
                 scanning = false
                 Toast.makeText(this@BlePairingActivity, "Scan failed: $errorCode", Toast.LENGTH_SHORT).show()
-                finish()
             }
         }
     }
 
-    private fun isProController2Advertisement(result: ScanResult): Boolean {
-        val manufacturerData = result.scanRecord?.manufacturerSpecificData ?: return false
+    private fun supportedControllerProductId(result: ScanResult): Int? {
+        val manufacturerData = result.scanRecord?.manufacturerSpecificData ?: return null
         val data = manufacturerData[NINTENDO_BLUETOOTH_MANUFACTURER_ID]
-        if (data == null || data.size < 7) return false
+        if (data == null || data.size < 7) return null
 
         val vendorId = readLe16(data, 3)
         val productId = readLe16(data, 5)
-        if (vendorId == NINTENDO_VENDOR_ID && productId == PRO_CONTROLLER_2_PRODUCT_ID) {
-            LimeLog.info("BLE Scanner saw Pro Controller 2 manufacturer data from ${result.device.address}")
-            return true
+        if (vendorId == Switch2ControllerMappings.NINTENDO_VENDOR_ID &&
+            Switch2ControllerMappings.isSupportedProductId(productId)
+        ) {
+            LimeLog.info(
+                "BLE Scanner saw ${Switch2ControllerMappings.controllerNameForProduct(productId)} " +
+                    "manufacturer data from ${result.device.address}",
+            )
+            return productId
         }
 
-        return false
+        return null
+    }
+
+    private fun productIdFromDeviceName(deviceName: String?): Int? {
+        val name = deviceName?.lowercase() ?: return null
+        return when {
+            "joy-con 2" in name && ("left" in name || "(l)" in name) -> Switch2ControllerMappings.PRODUCT_JOYCON_2_LEFT
+            "joy-con 2" in name && ("right" in name || "(r)" in name) -> Switch2ControllerMappings.PRODUCT_JOYCON_2_RIGHT
+            "joy-con" in name && ("left" in name || "(l)" in name) -> Switch2ControllerMappings.PRODUCT_JOYCON_L
+            "joy-con" in name && ("right" in name || "(r)" in name) -> Switch2ControllerMappings.PRODUCT_JOYCON_R
+            "gamecube" in name -> Switch2ControllerMappings.PRODUCT_NSO_GAMECUBE_CONTROLLER
+            "pro controller" in name -> Switch2ControllerMappings.PRODUCT_PRO_CONTROLLER_2
+            else -> null
+        }
     }
 
     private fun readLe16(data: ByteArray, offset: Int): Int {
@@ -187,12 +396,11 @@ class BlePairingActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (scanning) {
-            try {
-                bluetoothLeScanner?.stopScan(leScanCallback)
-            } catch (_: SecurityException) {
-            }
-            scanning = false
+        stopBleScan()
+        try {
+            unregisterReceiver(receiver)
+        } catch (e: IllegalArgumentException) {
+            // Ignore if not registered
         }
     }
 
@@ -201,7 +409,5 @@ class BlePairingActivity : Activity() {
         private const val PERMISSION_REQUEST_CODE = 1001
         private const val SCAN_PERIOD = 30000L
         private const val NINTENDO_BLUETOOTH_MANUFACTURER_ID = 0x0553
-        private const val NINTENDO_VENDOR_ID = 0x057e
-        private const val PRO_CONTROLLER_2_PRODUCT_ID = 0x2069
     }
 }

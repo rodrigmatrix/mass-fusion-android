@@ -360,6 +360,13 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
     public void setRenderTarget(Surface renderTarget) {
         this.renderTarget = renderTarget;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && videoDecoder != null && renderTarget != null) {
+            try {
+                videoDecoder.setOutputSurface(renderTarget);
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
     }
 
     public MediaCodecDecoderRenderer(Activity activity, PreferenceConfiguration prefs,

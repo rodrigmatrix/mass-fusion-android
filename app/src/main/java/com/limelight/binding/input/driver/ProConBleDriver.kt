@@ -26,10 +26,12 @@ class ProConBleDriver(
     private val device: BluetoothDevice?,
     deviceId: Int,
     listener: UsbDriverListener,
-) : AbstractController(deviceId, listener, USB_VENDOR_NINTENDO, USB_PRODUCT_SWITCH_PRO_2) {
+    private val productId: Int = Switch2ControllerMappings.PRODUCT_PRO_CONTROLLER_2,
+) : AbstractController(deviceId, listener, USB_VENDOR_NINTENDO, productId) {
     val address: String = device?.address ?: ""
     private var gatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
+    private var vibrationCharacteristic: BluetoothGattCharacteristic? = null
     private var notifyCharacteristic: BluetoothGattCharacteristic? = null
     private var responseCharacteristic: BluetoothGattCharacteristic? = null
     private var stopped = false
@@ -37,6 +39,7 @@ class ProConBleDriver(
     private var awaitingResponse = false
     private var descriptorsSetup = 0
     private var commandSequence = 0
+    private var vibrationPacketId = 0
     private var inputReportLogCount = 0
     private var decodedInputLogCount = 0
     private var lastDecodedButtons = 0
@@ -64,7 +67,7 @@ class ProConBleDriver(
     @SuppressLint("MissingPermission")
     override fun start(): Boolean {
         val targetDevice = device ?: return false
-        LimeLog.info("ProConBleDriver: Connecting to GATT server...")
+        LimeLog.info("${driverName()}: Connecting to GATT server...")
         gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             targetDevice.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } else {
@@ -83,11 +86,69 @@ class ProConBleDriver(
         notifyDeviceRemoved()
     }
 
+    @SuppressLint("MissingPermission")
     override fun rumble(lowFreqMotor: Short, highFreqMotor: Short) {
-        // TODO: implement using the Switch 2 vibration write characteristic.
+        val activeGatt = gatt ?: return
+        val characteristic = vibrationCharacteristic ?: run {
+            LimeLog.warning("${driverName()}: Rumble requested but vibration characteristic is unavailable")
+            return
+        }
+
+        val low = lowFreqMotor.toInt() and 0xffff
+        val high = highFreqMotor.toInt() and 0xffff
+        val lowAmplitude = (low ushr 8) * MAX_SWITCH_RUMBLE_AMPLITUDE / 0xff
+        val highAmplitude = (high ushr 8) * MAX_SWITCH_RUMBLE_AMPLITUDE / 0xff
+
+        val payload = if (isJoyCon()) {
+            val activeAmplitude = if (isJoyConLeft()) lowAmplitude else highAmplitude
+            val frame = buildVibrationFrame(activeAmplitude, activeAmplitude)
+            val motorVibrations = ByteArray(1 + frame.size * 3)
+            motorVibrations[0] = (0x50 + (vibrationPacketId and 0x0f)).toByte()
+            frame.copyInto(motorVibrations, destinationOffset = 1)
+            frame.copyInto(motorVibrations, destinationOffset = 1 + frame.size)
+            frame.copyInto(motorVibrations, destinationOffset = 1 + frame.size * 2)
+            
+            // JoyCons expect exactly 16 bytes on their dedicated characteristics
+            motorVibrations
+        } else {
+            val leftFrame = buildVibrationFrame(lowAmplitude, lowAmplitude)
+            val rightFrame = buildVibrationFrame(highAmplitude, highAmplitude)
+            
+            val leftVibrations = ByteArray(1 + leftFrame.size * 3)
+            leftVibrations[0] = (0x50 + (vibrationPacketId and 0x0f)).toByte()
+            leftFrame.copyInto(leftVibrations, destinationOffset = 1)
+            leftFrame.copyInto(leftVibrations, destinationOffset = 1 + leftFrame.size)
+            leftFrame.copyInto(leftVibrations, destinationOffset = 1 + leftFrame.size * 2)
+
+            val rightVibrations = ByteArray(1 + rightFrame.size * 3)
+            rightVibrations[0] = (0x50 + (vibrationPacketId and 0x0f)).toByte()
+            rightFrame.copyInto(rightVibrations, destinationOffset = 1)
+            rightFrame.copyInto(rightVibrations, destinationOffset = 1 + rightFrame.size)
+            rightFrame.copyInto(rightVibrations, destinationOffset = 1 + rightFrame.size * 2)
+
+            // Pro Controller expects 1 byte prefix + Left motor (16 bytes) + Right motor (16 bytes)
+            ByteArray(1 + leftVibrations.size + rightVibrations.size).also {
+                it[0] = 0x00
+                leftVibrations.copyInto(it, destinationOffset = 1)
+                rightVibrations.copyInto(it, destinationOffset = 1 + leftVibrations.size)
+            }
+        }
+
+        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        characteristic.value = payload
+        if (!activeGatt.writeCharacteristic(characteristic)) {
+            LimeLog.warning("${driverName()}: Rumble write failed to start")
+        }
+        vibrationPacketId = (vibrationPacketId + 1) and 0x0f
     }
 
     override fun rumbleTriggers(leftTrigger: Short, rightTrigger: Short) = Unit
+
+    fun isJoyCon(): Boolean = isJoyConLeft() || isJoyConRight()
+
+    fun isJoyConLeft(): Boolean = Switch2ControllerMappings.isJoyConLeft(productId)
+
+    fun isJoyConRight(): Boolean = Switch2ControllerMappings.isJoyConRight(productId)
 
     private fun buildCommand(commandId: Int, subcommandId: Int, payload: ByteArray): ByteArray {
         return ByteArray(8 + payload.size).also { data ->
@@ -137,7 +198,7 @@ class ProConBleDriver(
 
     @Synchronized
     private fun onCommandResponse(response: ByteArray) {
-        LimeLog.info("ProConBleDriver: Command response received (${response.size} bytes)")
+        LimeLog.info("${driverName()}: Command response received (${response.size} bytes)")
         awaitingResponse = false
         if (commandQueue.isNotEmpty()) {
             Handler(Looper.getMainLooper()).postDelayed({ sendNextCommand() }, 50L)
@@ -147,7 +208,7 @@ class ProConBleDriver(
     @Synchronized
     private fun onCommandTimeout(sequence: Int) {
         if (awaitingResponse && sequence == commandSequence) {
-            LimeLog.warning("ProConBleDriver: No command response received, advancing queue...")
+            LimeLog.warning("${driverName()}: No command response received, advancing queue...")
             awaitingResponse = false
             sendNextCommand()
         }
@@ -156,18 +217,18 @@ class ProConBleDriver(
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            LimeLog.info("ProConBleDriver: onConnectionStateChange status=$status newState=$newState")
+            LimeLog.info("${driverName()}: onConnectionStateChange status=$status newState=$newState")
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    LimeLog.info("ProConBleDriver: Connected. Requesting MTU 512...")
+                    LimeLog.info("${driverName()}: Connected. Requesting MTU 512...")
                     if (!gatt.requestMtu(512)) {
-                        LimeLog.warning("ProConBleDriver: requestMtu failed, discovering services anyway...")
+                        LimeLog.warning("${driverName()}: requestMtu failed, discovering services anyway...")
                         gatt.discoverServices()
                     }
                 }
 
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    LimeLog.info("ProConBleDriver: Disconnected.")
+                    LimeLog.info("${driverName()}: Disconnected.")
                     stop()
                 }
             }
@@ -175,7 +236,7 @@ class ProConBleDriver(
 
         @SuppressLint("MissingPermission")
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-            LimeLog.info("ProConBleDriver: MTU changed to $mtu (status $status). Discovering services...")
+            LimeLog.info("${driverName()}: MTU changed to $mtu (status $status). Discovering services...")
             gatt.discoverServices()
         }
 
@@ -183,22 +244,28 @@ class ProConBleDriver(
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) return
 
-            LimeLog.info("ProConBleDriver: Services discovered.")
+            LimeLog.info("${driverName()}: Services discovered.")
             for (service in gatt.services) {
-                LimeLog.info("ProConBleDriver: Service: ${service.uuid}")
+                LimeLog.info("${driverName()}: Service: ${service.uuid}")
                 for (characteristic in service.characteristics) {
-                    LimeLog.info("ProConBleDriver:   Char: ${characteristic.uuid} props=${characteristic.properties}")
+                    LimeLog.info("${driverName()}:   Char: ${characteristic.uuid} props=${characteristic.properties}")
                     when (characteristic.uuid) {
                         COMMAND_WRITE_UUID -> writeCharacteristic = characteristic
                         INPUT_REPORT_UUID -> notifyCharacteristic = characteristic
                         COMMAND_RESPONSE_UUID -> responseCharacteristic = characteristic
+                        VIBRATION_WRITE_PRO_CONTROLLER_UUID,
+                        VIBRATION_WRITE_JOYCON_L_UUID,
+                        VIBRATION_WRITE_JOYCON_R_UUID -> vibrationCharacteristic = characteristic
                     }
                 }
             }
 
             if (writeCharacteristic == null || notifyCharacteristic == null || responseCharacteristic == null) {
-                LimeLog.warning("ProConBleDriver: Missing required characteristics!")
+                LimeLog.warning("${driverName()}: Missing required characteristics!")
                 return
+            }
+            if (vibrationCharacteristic == null) {
+                LimeLog.warning("${driverName()}: Missing vibration characteristic; rumble will be unavailable")
             }
 
             Handler(Looper.getMainLooper()).postDelayed({ startNotificationSetup(gatt) }, 2000L)
@@ -214,7 +281,7 @@ class ProConBleDriver(
             if (descriptor != null) {
                 descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                 gatt.writeDescriptor(descriptor)
-                LimeLog.info("ProConBleDriver: Enabling COMMAND_RESPONSE notifications...")
+                LimeLog.info("${driverName()}: Enabling COMMAND_RESPONSE notifications...")
             } else {
                 enableInputReportNotification(gatt)
             }
@@ -228,7 +295,7 @@ class ProConBleDriver(
             if (descriptor != null) {
                 descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                 gatt.writeDescriptor(descriptor)
-                LimeLog.info("ProConBleDriver: Enabling INPUT_REPORT notifications...")
+                LimeLog.info("${driverName()}: Enabling INPUT_REPORT notifications...")
             } else {
                 onAllNotificationsEnabled()
             }
@@ -236,7 +303,7 @@ class ProConBleDriver(
 
         @SuppressLint("MissingPermission")
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            LimeLog.info("ProConBleDriver: Descriptor written for ${descriptor.characteristic.uuid} status=$status")
+            LimeLog.info("${driverName()}: Descriptor written for ${descriptor.characteristic.uuid} status=$status")
             descriptorsSetup++
             if (descriptorsSetup == 1) {
                 enableInputReportNotification(gatt)
@@ -246,7 +313,7 @@ class ProConBleDriver(
         }
 
         private fun onAllNotificationsEnabled() {
-            LimeLog.info("ProConBleDriver: All notifications enabled. Sending init sequence...")
+            LimeLog.info("${driverName()}: All notifications enabled. Sending init sequence...")
             notifyDeviceAdded()
             sendInitSequence()
         }
@@ -256,7 +323,7 @@ class ProConBleDriver(
             characteristic: BluetoothGattCharacteristic,
             status: Int,
         ) {
-            LimeLog.info("ProConBleDriver: Write complete for ${characteristic.uuid} status=$status")
+            LimeLog.info("${driverName()}: Write complete for ${characteristic.uuid} status=$status")
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
@@ -276,7 +343,7 @@ class ProConBleDriver(
                 COMMAND_RESPONSE_UUID -> onCommandResponse(data)
                 INPUT_REPORT_UUID -> {
                     if (inputReportLogCount < 5) {
-                        LimeLog.info("ProConBleDriver: Input report received (${data.size} bytes): ${data.toHexPreview()}")
+                        LimeLog.info("${driverName()}: Input report received (${data.size} bytes): ${data.toHexPreview()}")
                         inputReportLogCount++
                     }
                     logRawReportDelta(data)
@@ -329,10 +396,22 @@ class ProConBleDriver(
 
         val lsRaw = readStick24(buf, 10)
         val rsRaw = readStick24(buf, 13)
-        leftStickX = ((lsRaw and 0xfff) - 2048) / 2048.0f
-        leftStickY = -(((lsRaw shr 12) and 0xfff) - 2048) / 2048.0f
-        rightStickX = ((rsRaw and 0xfff) - 2048) / 2048.0f
-        rightStickY = -(((rsRaw shr 12) and 0xfff) - 2048) / 2048.0f
+        if (Switch2ControllerMappings.isJoyConRight(productId)) {
+            leftStickX = 0f
+            leftStickY = 0f
+            rightStickX = stickAxisX(rsRaw)
+            rightStickY = stickAxisY(rsRaw)
+        } else if (Switch2ControllerMappings.isJoyConLeft(productId)) {
+            leftStickX = stickAxisX(lsRaw)
+            leftStickY = stickAxisY(lsRaw)
+            rightStickX = 0f
+            rightStickY = 0f
+        } else {
+            leftStickX = stickAxisX(lsRaw)
+            leftStickY = stickAxisY(lsRaw)
+            rightStickX = stickAxisX(rsRaw)
+            rightStickY = stickAxisY(rsRaw)
+        }
 
         logRawButtonChanges(buttons)
         logButtonChanges(buttons, buttonFlags)
@@ -340,7 +419,7 @@ class ProConBleDriver(
 
         if (decodedInputLogCount < 20 && (buttons != lastDecodedButtons || buttons != 0)) {
             LimeLog.info(
-                "ProConBleDriver: decoded buttons=0x${buttons.toUInt().toString(16)} " +
+                "${driverName()}: decoded buttons=0x${buttons.toUInt().toString(16)} " +
                     "mapped=0x${buttonFlags.toUInt().toString(16)} " +
                     "ls=($leftStickX,$leftStickY) rs=($rightStickX,$rightStickY) " +
                     "lt=$leftTrigger rt=$rightTrigger",
@@ -381,7 +460,7 @@ class ProConBleDriver(
         val message = "report-delta size=${data.size} changed=${deltas.take(20).joinToString(",")}" +
             if (deltas.size > 20) ",..." else ""
         Log.i(LOG_TAG_INPUT, message)
-        LimeLog.info("ProConBleDriver: $message")
+        LimeLog.info("${driverName()}: $message")
         rawReportDeltaLogCount++
     }
 
@@ -406,7 +485,7 @@ class ProConBleDriver(
             }
         }
         Log.i(LOG_TAG_INPUT, message)
-        LimeLog.info("ProConBleDriver: $message")
+        LimeLog.info("${driverName()}: $message")
         lastRawButtons = rawButtons
     }
 
@@ -432,7 +511,7 @@ class ProConBleDriver(
         }
 
         Log.i(LOG_TAG_INPUT, message)
-        LimeLog.info("ProConBleDriver: button change $message")
+        LimeLog.info("${driverName()}: button change $message")
         lastReportedButtonFlags = mappedButtons
     }
 
@@ -442,7 +521,7 @@ class ProConBleDriver(
         if (triggerChanged) {
             val message = "triggers ZL=$leftTrigger ZR=$rightTrigger"
             Log.i(LOG_TAG_INPUT, message)
-            LimeLog.info("ProConBleDriver: $message")
+            LimeLog.info("${driverName()}: $message")
             lastLoggedLeftTrigger = leftTrigger
             lastLoggedRightTrigger = rightTrigger
         }
@@ -455,7 +534,7 @@ class ProConBleDriver(
             val message = "sticks LS=(${leftStickX.formatAxis()},${leftStickY.formatAxis()}) " +
                 "RS=(${rightStickX.formatAxis()},${rightStickY.formatAxis()})"
             Log.i(LOG_TAG_INPUT, message)
-            LimeLog.info("ProConBleDriver: $message")
+            LimeLog.info("${driverName()}: $message")
             lastLoggedLeftStickX = leftStickX
             lastLoggedLeftStickY = leftStickY
             lastLoggedRightStickX = rightStickX
@@ -491,6 +570,26 @@ class ProConBleDriver(
             ((buf.get(offset + 2).toInt() and 0xff) shl 16)
     }
 
+    private fun stickAxisX(raw: Int): Float = ((raw and 0xfff) - 2048) / 2048.0f
+
+    private fun stickAxisY(raw: Int): Float = -(((raw shr 12) and 0xfff) - 2048) / 2048.0f
+
+    private fun driverName(): String {
+        return "Switch2BleDriver(${Switch2ControllerMappings.controllerNameForProduct(productId)})"
+    }
+
+    private fun buildVibrationFrame(lowAmplitude: Int, highAmplitude: Int): ByteArray {
+        var value = 0L
+        value = value or (DEFAULT_LOW_FREQUENCY.toLong() and 0x1ff)
+        value = value or ((lowAmplitude.coerceIn(0, 0x3ff).toLong() and 0x3ff) shl 10)
+        value = value or ((DEFAULT_HIGH_FREQUENCY.toLong() and 0x1ff) shl 20)
+        value = value or ((highAmplitude.coerceIn(0, 0x3ff).toLong() and 0x3ff) shl 30)
+
+        return ByteArray(5) { index ->
+            ((value shr (index * 8)) and 0xff).toByte()
+        }
+    }
+
     private fun ByteArray.toHexPreview(maxBytes: Int = 32): String {
         return take(maxBytes).joinToString(separator = " ") { byte ->
             (byte.toInt() and 0xff).toString(16).padStart(2, '0')
@@ -507,8 +606,14 @@ class ProConBleDriver(
         private const val STICK_LOG_THRESHOLD = 0.08f
         private const val TRIGGER_LOG_THRESHOLD = 0.05f
         private val INPUT_REPORT_UUID: UUID = UUID.fromString("ab7de9be-89fe-49ad-828f-118f09df7fd2")
+        private val VIBRATION_WRITE_JOYCON_R_UUID: UUID = UUID.fromString("fa19b0fb-cd1f-46a7-84a1-bbb09e00c149")
+        private val VIBRATION_WRITE_JOYCON_L_UUID: UUID = UUID.fromString("289326cb-a471-485d-a8f4-240c14f18241")
+        private val VIBRATION_WRITE_PRO_CONTROLLER_UUID: UUID = UUID.fromString("cc483f51-9258-427d-a939-630c31f72b05")
         private val COMMAND_WRITE_UUID: UUID = UUID.fromString("649d4ac9-8eb7-4e6c-af44-1ea54fe5f005")
         private val COMMAND_RESPONSE_UUID: UUID = UUID.fromString("c765a961-d9d8-4d36-a20a-5315b111836a")
+        private const val DEFAULT_LOW_FREQUENCY = 0x0e1
+        private const val DEFAULT_HIGH_FREQUENCY = 0x1e1
+        private const val MAX_SWITCH_RUMBLE_AMPLITUDE = 800
 
         private const val COMMAND_LEDS = 0x09
         private const val SUBCOMMAND_LEDS_SET_PLAYER = 0x07
@@ -524,7 +629,6 @@ class ProConBleDriver(
         private const val LED_PLAYER_1 = 0x01
         private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         private const val USB_VENDOR_NINTENDO = 0x057e
-        private const val USB_PRODUCT_SWITCH_PRO_2 = 0x2069
         private val BUTTON_LOG_NAMES = listOf(
             ControllerPacket.A_FLAG to "A",
             ControllerPacket.B_FLAG to "B",
@@ -568,6 +672,12 @@ class ProConBleDriver(
             0x00010000 to "DPAD_DOWN",
             0x00080000 to "DPAD_LEFT",
             0x00040000 to "DPAD_RIGHT",
+            0x00200000 to "SL_L",
+            0x00100000 to "SR_L",
+            0x00000020 to "SL_R",
+            0x00000010 to "SR_R",
+            0x02000000 to "GL",
+            0x01000000 to "GR",
         )
     }
 }

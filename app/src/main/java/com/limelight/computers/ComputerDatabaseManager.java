@@ -33,6 +33,7 @@ public class ComputerDatabaseManager {
         String REMOTE = "remote";
         String MANUAL = "manual";
         String IPv6 = "ipv6";
+        String TAILSCALE = "tailscale";
 
         String ADDRESS = "address";
         String PORT = "port";
@@ -118,6 +119,7 @@ public class ComputerDatabaseManager {
             addresses.put(AddressFields.REMOTE, tupleToJson(details.remoteAddress));
             addresses.put(AddressFields.MANUAL, tupleToJson(details.manualAddress));
             addresses.put(AddressFields.IPv6, tupleToJson(details.ipv6Address));
+            addresses.put(AddressFields.TAILSCALE, tupleToJson(details.tailscaleAddress));
             values.put(ADDRESSES_COLUMN_NAME, addresses.toString());
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -149,6 +151,7 @@ public class ComputerDatabaseManager {
             details.remoteAddress = tupleFromJson(addresses, AddressFields.REMOTE);
             details.manualAddress = tupleFromJson(addresses, AddressFields.MANUAL);
             details.ipv6Address = tupleFromJson(addresses, AddressFields.IPv6);
+            details.tailscaleAddress = tupleFromJson(addresses, AddressFields.TAILSCALE);
         } catch (JSONException e) {
             throw new RuntimeException(e);
          }

@@ -25,7 +25,7 @@ class HelpActivity : ComponentActivity() {
         val urlToLoad = intent.data?.toString() ?: ""
 
         setContent {
-            MaterialTheme {
+            com.limelight.ui.theme.MassFusionTheme {
                 HelpScreen(url = urlToLoad)
             }
         }

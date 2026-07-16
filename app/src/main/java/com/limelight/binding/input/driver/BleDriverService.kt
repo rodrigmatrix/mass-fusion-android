@@ -14,9 +14,13 @@ class BleDriverService : Service(), UsbDriverListener {
     private var started = false
     private val binder = BleDriverBinder()
     private val controllers = ArrayList<AbstractController>()
+    private val physicalBleControllersById = HashMap<Int, ProConBleDriver>()
+    private val latestStatesById = HashMap<Int, ControllerState>()
     private var listener: UsbDriverListener? = null
     private var nextDeviceId = 100 // Start at 100 to avoid conflict with USB devices
     private val connectedAddresses = HashSet<String>()
+    private var combineJoyCons = true
+    private var virtualJoyConPair: VirtualJoyConPairController? = null
 
     override fun reportControllerState(
         controllerId: Int,
@@ -28,6 +32,21 @@ class BleDriverService : Service(), UsbDriverListener {
         leftTrigger: Float,
         rightTrigger: Float,
     ) {
+        val physical = physicalBleControllersById[controllerId]
+        if (combineJoyCons && physical != null && physical.isJoyCon()) {
+            latestStatesById[controllerId] = ControllerState(
+                buttonFlags,
+                leftStickX,
+                leftStickY,
+                rightStickX,
+                rightStickY,
+                leftTrigger,
+                rightTrigger,
+            )
+            reportCombinedJoyConState()
+            return
+        }
+
         listener?.reportControllerState(
             controllerId,
             buttonFlags,
@@ -47,6 +66,16 @@ class BleDriverService : Service(), UsbDriverListener {
         motionY: Float,
         motionZ: Float,
     ) {
+        val physical = physicalBleControllersById[controllerId]
+        val pair = virtualJoyConPair
+        if (combineJoyCons && physical != null && physical.isJoyCon() && pair != null) {
+            val shouldUseMotion = physical.isJoyConRight() || !hasConnectedJoyConRight()
+            if (shouldUseMotion) {
+                listener?.reportControllerMotion(pair.getControllerId(), motionType, motionX, motionY, motionZ)
+            }
+            return
+        }
+
         listener?.reportControllerMotion(controllerId, motionType, motionX, motionY, motionZ)
     }
 
@@ -54,6 +83,18 @@ class BleDriverService : Service(), UsbDriverListener {
         controllers.remove(controller)
         if (controller is ProConBleDriver) {
             connectedAddresses.remove(controller.address)
+            physicalBleControllersById.remove(controller.getControllerId())
+            latestStatesById.remove(controller.getControllerId())
+            if (combineJoyCons && controller.isJoyCon()) {
+                removeVirtualJoyConPair()
+                if (physicalBleControllersById.values.any { it.isJoyCon() }) {
+                    ensureVirtualJoyConPair()
+                }
+                if (controllers.isEmpty()) {
+                    started = false
+                }
+                return
+            }
         }
         if (controllers.isEmpty()) {
             started = false
@@ -62,6 +103,13 @@ class BleDriverService : Service(), UsbDriverListener {
     }
 
     override fun deviceAdded(controller: AbstractController) {
+        if (controller is ProConBleDriver) {
+            physicalBleControllersById[controller.getControllerId()] = controller
+            if (combineJoyCons && controller.isJoyCon()) {
+                ensureVirtualJoyConPair()
+                return
+            }
+        }
         listener?.deviceAdded(controller)
     }
 
@@ -69,7 +117,14 @@ class BleDriverService : Service(), UsbDriverListener {
         fun setListener(listener: UsbDriverListener?) {
             this@BleDriverService.listener = listener
             if (listener != null) {
-                controllers.forEach(listener::deviceAdded)
+                if (combineJoyCons && virtualJoyConPair != null) {
+                    listener.deviceAdded(virtualJoyConPair)
+                    controllers
+                        .filterNot { it is ProConBleDriver && it.isJoyCon() }
+                        .forEach(listener::deviceAdded)
+                } else {
+                    controllers.forEach(listener::deviceAdded)
+                }
             }
         }
 
@@ -90,8 +145,12 @@ class BleDriverService : Service(), UsbDriverListener {
 
         val pairedControllers = Switch2ControllerMappings.getPairedControllers(this)
         val adapter = bluetoothAdapter
+        combineJoyCons = Switch2ControllerMappings.combineJoyCons(this)
 
-        LimeLog.info("BleDriverService: start() - controllers=$pairedControllers btAdapter=${if (adapter != null) "ok" else "null"}")
+        LimeLog.info(
+            "BleDriverService: start() - controllers=$pairedControllers " +
+                "combineJoyCons=$combineJoyCons btAdapter=${if (adapter != null) "ok" else "null"}",
+        )
 
         if (pairedControllers.isNotEmpty() && adapter != null && adapter.isEnabled) {
             for (mac in pairedControllers) {
@@ -99,14 +158,25 @@ class BleDriverService : Service(), UsbDriverListener {
                     continue
                 }
                 val device = adapter.getRemoteDevice(mac)
-                LimeLog.info("BleDriverService attempting to connect to $mac")
-                val controller = ProConBleDriver(this, device, nextDeviceId++, this)
+                val productId = Switch2ControllerMappings.controllerProductId(this, mac)
+                val controllerName = Switch2ControllerMappings.controllerNameForProduct(productId)
+                
+                if (productId == Switch2ControllerMappings.PRODUCT_JOYCON_L || productId == Switch2ControllerMappings.PRODUCT_JOYCON_R) {
+                    LimeLog.info("BleDriverService skipping $controllerName $mac (handled natively by Android)")
+                    continue
+                }
+
+                LimeLog.info(
+                    "BleDriverService attempting to connect to $controllerName $mac " +
+                        "product=0x${productId.toString(16)}",
+                )
+                val controller = ProConBleDriver(this, device, nextDeviceId++, this, productId)
                 if (controller.start()) {
                     controllers.add(controller)
                     connectedAddresses.add(mac)
                     started = true
                 } else {
-                    LimeLog.warning("BleDriverService: ProConBleDriver.start() returned false for $mac")
+                    LimeLog.warning("BleDriverService: Switch2 BLE driver start() returned false for $mac")
                 }
             }
         } else {
@@ -118,10 +188,77 @@ class BleDriverService : Service(), UsbDriverListener {
         if (!started) return
         started = false
 
+        removeVirtualJoyConPair()
         while (controllers.isNotEmpty()) {
             controllers.removeAt(0).stop()
         }
         connectedAddresses.clear()
+        physicalBleControllersById.clear()
+        latestStatesById.clear()
+    }
+
+    private fun ensureVirtualJoyConPair() {
+        if (virtualJoyConPair != null) return
+        val pair = VirtualJoyConPairController(nextDeviceId++, this)
+        virtualJoyConPair = pair
+        LimeLog.info("BleDriverService: exposing paired Joy-Con 2 virtual controller id=${pair.getControllerId()}")
+        listener?.deviceAdded(pair)
+    }
+
+    private fun removeVirtualJoyConPair() {
+        val pair = virtualJoyConPair ?: return
+        LimeLog.info("BleDriverService: removing paired Joy-Con 2 virtual controller id=${pair.getControllerId()}")
+        listener?.deviceRemoved(pair)
+        virtualJoyConPair = null
+    }
+
+    private fun reportCombinedJoyConState() {
+        val pair = virtualJoyConPair ?: return
+        var buttonFlags = 0
+        var leftStickX = 0f
+        var leftStickY = 0f
+        var rightStickX = 0f
+        var rightStickY = 0f
+        var leftTrigger = 0f
+        var rightTrigger = 0f
+
+        for ((controllerId, state) in latestStatesById) {
+            val controller = physicalBleControllersById[controllerId] ?: continue
+            if (!controller.isJoyCon()) continue
+
+            buttonFlags = buttonFlags or state.buttonFlags
+            leftStickX = maxByMagnitude(leftStickX, state.leftStickX)
+            leftStickY = maxByMagnitude(leftStickY, state.leftStickY)
+            rightStickX = maxByMagnitude(rightStickX, state.rightStickX)
+            rightStickY = maxByMagnitude(rightStickY, state.rightStickY)
+            leftTrigger = maxOf(leftTrigger, state.leftTrigger)
+            rightTrigger = maxOf(rightTrigger, state.rightTrigger)
+        }
+
+        listener?.reportControllerState(
+            pair.getControllerId(),
+            buttonFlags,
+            leftStickX,
+            leftStickY,
+            rightStickX,
+            rightStickY,
+            leftTrigger,
+            rightTrigger,
+        )
+    }
+
+    private fun maxByMagnitude(a: Float, b: Float): Float {
+        return if (kotlin.math.abs(b) > kotlin.math.abs(a)) b else a
+    }
+
+    private fun hasConnectedJoyConRight(): Boolean {
+        return physicalBleControllersById.values.any { it.isJoyConRight() }
+    }
+
+    private fun rumbleConnectedJoyCons(lowFreqMotor: Short, highFreqMotor: Short) {
+        physicalBleControllersById.values
+            .filter { it.isJoyCon() }
+            .forEach { it.rumble(lowFreqMotor, highFreqMotor) }
     }
 
     override fun onCreate() {
@@ -143,4 +280,46 @@ class BleDriverService : Service(), UsbDriverListener {
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
+
+    private data class ControllerState(
+        val buttonFlags: Int,
+        val leftStickX: Float,
+        val leftStickY: Float,
+        val rightStickX: Float,
+        val rightStickY: Float,
+        val leftTrigger: Float,
+        val rightTrigger: Float,
+    )
+
+    private inner class VirtualJoyConPairController(
+        deviceId: Int,
+        listener: UsbDriverListener,
+    ) : AbstractController(
+        deviceId,
+        listener,
+        Switch2ControllerMappings.NINTENDO_VENDOR_ID,
+        Switch2ControllerMappings.PRODUCT_PRO_CONTROLLER_2,
+    ) {
+        init {
+            type = com.limelight.nvstream.jni.MoonBridge.LI_CTYPE_NINTENDO
+            capabilities = (
+                com.limelight.nvstream.jni.MoonBridge.LI_CCAP_GYRO.toInt() or
+                    com.limelight.nvstream.jni.MoonBridge.LI_CCAP_ACCEL.toInt() or
+                    com.limelight.nvstream.jni.MoonBridge.LI_CCAP_RUMBLE.toInt()
+                ).toShort()
+            supportedButtonFlags = Switch2ControllerMappings.supportedButtonFlags()
+        }
+
+        override fun start(): Boolean = true
+
+        override fun stop() = Unit
+
+        override fun rumble(lowFreqMotor: Short, highFreqMotor: Short) {
+            rumbleConnectedJoyCons(lowFreqMotor, highFreqMotor)
+        }
+
+        override fun rumbleTriggers(leftTrigger: Short, rightTrigger: Short) {
+            rumbleConnectedJoyCons(leftTrigger, rightTrigger)
+        }
+    }
 }

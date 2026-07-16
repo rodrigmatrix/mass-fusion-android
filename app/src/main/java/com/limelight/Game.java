@@ -1362,7 +1362,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         int top = viewLocation[1];
         int width = view.getWidth();
         int height = view.getHeight();
-        Rational aspectRatio = new Rational(width, height);
+        Rational aspectRatio = getSafePipAspectRatio(width, height);
         hint = new Rect(left, top, left + width, top + height);
 
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
@@ -1388,6 +1388,28 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         return builder.build();
     }
 
+    private Rational getSafePipAspectRatio(int width, int height) {
+        if (width <= 0 || height <= 0) {
+            return new Rational(16, 9);
+        }
+
+        // Android rejects PiP ratios outside roughly 1:2.39 to 2.39:1.
+        // Clamp unusual stream/container sizes so PiP setup never crashes.
+        long lhsWide = (long) width * 100;
+        long rhsWide = (long) height * 239;
+        if (lhsWide > rhsWide) {
+            return new Rational(239, 100);
+        }
+
+        long lhsTall = (long) width * 239;
+        long rhsTall = (long) height * 100;
+        if (lhsTall < rhsTall) {
+            return new Rational(100, 239);
+        }
+
+        return new Rational(width, height);
+    }
+
     public void updatePipAutoEnter() {
         if (!prefConfig.enablePip || isOnExternalDisplay()) {
             return;
@@ -1396,7 +1418,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         boolean autoEnter = connected && suppressPipRefCount == 0;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            setPictureInPictureParams(getPictureInPictureParams(autoEnter));
+            try {
+                setPictureInPictureParams(getPictureInPictureParams(autoEnter));
+            } catch (IllegalArgumentException e) {
+                LimeLog.warning("Ignoring invalid PiP params: " + e.getMessage());
+            }
         } else {
             autoEnterPip = autoEnter;
         }
@@ -1454,7 +1480,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         // Enter PiP when requested unless we're on Android 12 which supports
         // auto-enter.
         if (autoEnterPip && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            enterPictureInPictureMode(getPictureInPictureParams(false));
+            try {
+                enterPictureInPictureMode(getPictureInPictureParams(false));
+            } catch (IllegalArgumentException e) {
+                LimeLog.warning("Ignoring invalid PiP params: " + e.getMessage());
+            }
         }
         return true;
     }

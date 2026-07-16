@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.LimeLog;
 import com.limelight.binding.PlatformBinding;
 import com.limelight.discovery.DiscoveryService;
@@ -276,6 +277,54 @@ public class ComputerManagerService extends Service {
 
         public String getUniqueId() {
             return idManager.getUniqueId();
+        }
+
+        public void refreshAllComputers() {
+            synchronized (pollingTuples) {
+                for (PollingTuple tuple : pollingTuples) {
+                    refreshComputer(tuple);
+                }
+            }
+        }
+
+        public void refreshComputer(String uuid) {
+            synchronized (pollingTuples) {
+                for (PollingTuple tuple : pollingTuples) {
+                    if (uuid.equals(tuple.computer.uuid)) {
+                        refreshComputer(tuple);
+                        return;
+                    }
+                }
+            }
+        }
+
+
+        public void updateComputer(ComputerDetails details) {
+            dbManager.updateComputer(details);
+            invalidateStateForComputer(details.uuid);
+        }
+
+        private void refreshComputer(PollingTuple tuple) {
+            synchronized (tuple.networkLock) {
+                tuple.computer.state = ComputerDetails.State.UNKNOWN;
+                if (listener != null) {
+                    listener.notifyComputerUpdated(tuple.computer);
+                }
+            }
+
+            Thread refreshThread = new Thread(() -> {
+                try {
+                    synchronized (tuple.networkLock) {
+                        LimeLog.info("Forcing immediate poll for " + tuple.computer.name);
+                        if (runPoll(tuple.computer, false, 0)) {
+                            tuple.lastSuccessfulPollMs = SystemClock.elapsedRealtime();
+                        }
+                    }
+                } catch (InterruptedException ignored) {
+                }
+            });
+            refreshThread.setName("Forced polling thread for " + tuple.computer.name);
+            refreshThread.start();
         }
 
         public ComputerDetails getComputer(String uuid) {
@@ -575,6 +624,11 @@ public class ComputerManagerService extends Service {
             return null;
         } catch (IOException e) {
             return null;
+        } catch (Exception e) {
+            if (e instanceof InterruptedException || e.getCause() instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return null;
         }
     }
 
@@ -625,21 +679,43 @@ public class ComputerManagerService extends Service {
     }
 
     private ComputerDetails parallelPollPc(ComputerDetails details) throws InterruptedException {
+        boolean useTailscale = PreferenceConfiguration.readPreferences(this).useTailscale;
+
         ParallelPollTuple localInfo = new ParallelPollTuple(details.localAddress, details);
         ParallelPollTuple manualInfo = new ParallelPollTuple(details.manualAddress, details);
+        ParallelPollTuple tailscaleInfo = new ParallelPollTuple(details.tailscaleAddress, details);
         ParallelPollTuple remoteInfo = new ParallelPollTuple(details.remoteAddress, details);
         ParallelPollTuple ipv6Info = new ParallelPollTuple(details.ipv6Address, details);
 
         // These must be started in order of precedence for the deduplication algorithm
         // to result in the correct behavior.
         HashSet<ComputerDetails.AddressTuple> uniqueAddresses = new HashSet<>();
+        if (useTailscale) {
+            startParallelPollThread(tailscaleInfo, uniqueAddresses);
+        }
         startParallelPollThread(localInfo, uniqueAddresses);
         startParallelPollThread(manualInfo, uniqueAddresses);
+        if (!useTailscale) {
+            startParallelPollThread(tailscaleInfo, uniqueAddresses);
+        }
         startParallelPollThread(remoteInfo, uniqueAddresses);
         startParallelPollThread(ipv6Info, uniqueAddresses);
 
         try {
-            // Check local first
+            if (useTailscale) {
+                // Check tailscale first if toggled
+                synchronized (tailscaleInfo) {
+                    while (!tailscaleInfo.complete) {
+                        tailscaleInfo.wait();
+                    }
+                    if (tailscaleInfo.returnedDetails != null) {
+                        tailscaleInfo.returnedDetails.activeAddress = tailscaleInfo.address;
+                        return tailscaleInfo.returnedDetails;
+                    }
+                }
+            }
+
+            // Check local
             synchronized (localInfo) {
                 while (!localInfo.complete) {
                     localInfo.wait();
@@ -660,6 +736,19 @@ public class ComputerManagerService extends Service {
                 if (manualInfo.returnedDetails != null) {
                     manualInfo.returnedDetails.activeAddress = manualInfo.address;
                     return manualInfo.returnedDetails;
+                }
+            }
+            
+            if (!useTailscale) {
+                // Now tailscale (fallback)
+                synchronized (tailscaleInfo) {
+                    while (!tailscaleInfo.complete) {
+                        tailscaleInfo.wait();
+                    }
+                    if (tailscaleInfo.returnedDetails != null) {
+                        tailscaleInfo.returnedDetails.activeAddress = tailscaleInfo.address;
+                        return tailscaleInfo.returnedDetails;
+                    }
                 }
             }
 
@@ -691,6 +780,7 @@ public class ComputerManagerService extends Service {
             // interrupted by an attempt to stop polling.
             localInfo.interrupt();
             manualInfo.interrupt();
+            tailscaleInfo.interrupt();
             remoteInfo.interrupt();
             ipv6Info.interrupt();
         }
@@ -924,6 +1014,13 @@ public class ComputerManagerService extends Service {
                         } catch (IOException e) {
                             e.printStackTrace();
                         } catch (XmlPullParserException e) {
+                            e.printStackTrace();
+                        } catch (Exception e) {
+                            if (e instanceof InterruptedException || e.getCause() instanceof InterruptedException) {
+                                LimeLog.info("App list polling interrupted for " + computer.name);
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
                             e.printStackTrace();
                         }
                     } while (waitPollingDelay());

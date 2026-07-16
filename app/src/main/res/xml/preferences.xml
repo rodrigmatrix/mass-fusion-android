@@ -66,7 +66,7 @@
         app:iconSpaceReserved="false" />
 
         <CheckBoxPreference
-            android:defaultValue="false"
+            android:defaultValue="true"
             android:key="checkbox_ultra_low_latency"
             android:summary="@string/summary_checkbox_ultra_low_latency"
             android:title="@string/title_checkbox_ultra_low_latency"
@@ -641,12 +641,6 @@
             android:key="checkbox_small_icon_mode"
             android:summary="@string/summary_checkbox_small_icon_mode"
             android:title="@string/title_checkbox_small_icon_mode"
-            app:iconSpaceReserved="false" />
-        <CheckBoxPreference
-            android:defaultValue="false"
-            android:key="checkbox_enable_pip"
-            android:summary="@string/summary_checkbox_enable_pip"
-            android:title="@string/title_checkbox_enable_pip"
             app:iconSpaceReserved="false" />
     </PreferenceCategory>
 
