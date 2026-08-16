@@ -143,6 +143,15 @@ class BleDriverService : Service(), UsbDriverListener {
             started = false
         }
 
+        try {
+            stopService(Intent().setComponent(android.content.ComponentName(this, "com.switch2.controllers.service.Switch2BleDriverService")))
+        } catch (_: Exception) {}
+
+        if (bluetoothAdapter == null) {
+            val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            bluetoothAdapter = bluetoothManager?.adapter
+        }
+
         val pairedControllers = Switch2ControllerMappings.getPairedControllers(this)
         val adapter = bluetoothAdapter
         combineJoyCons = Switch2ControllerMappings.combineJoyCons(this)

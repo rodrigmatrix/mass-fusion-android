@@ -1,10 +1,11 @@
 package com.limelight.binding.input.driver
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.limelight.nvstream.input.ControllerPacket
 
 object Switch2ControllerMappings {
-    const val PREFS_NAME = "ble_prefs"
+    const val PREFS_NAME = "switch2_controller_prefs"
     const val PREF_PAIRED_CONTROLLERS = "paired_ble_controller_macs"
     const val NINTENDO_VENDOR_ID = 0x057e
     const val PRODUCT_JOYCON_2_RIGHT = 0x2066
@@ -60,8 +61,25 @@ object Switch2ControllerMappings {
         TargetButton("Paddle 4", ControllerPacket.PADDLE4_FLAG),
     )
 
+    private fun getS2Prefs(context: Context): SharedPreferences {
+        return context.getSharedPreferences("switch2_controller_prefs", Context.MODE_PRIVATE)
+    }
+
+    private fun getBlePrefs(context: Context): SharedPreferences {
+        return context.getSharedPreferences("ble_prefs", Context.MODE_PRIVATE)
+    }
+
     fun sourceButtons(context: Context, address: String): List<SourceButton> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        val glMask = when {
+            s2.contains(rawMaskKey(address, SOURCE_GL)) -> s2.getInt(rawMaskKey(address, SOURCE_GL), 0)
+            else -> ble.getInt(rawMaskKey(address, SOURCE_GL), 0)
+        }
+        val grMask = when {
+            s2.contains(rawMaskKey(address, SOURCE_GR)) -> s2.getInt(rawMaskKey(address, SOURCE_GR), 0)
+            else -> ble.getInt(rawMaskKey(address, SOURCE_GR), 0)
+        }
         return listOf(
             SourceButton("a", "A", 0x00000008, ControllerPacket.A_FLAG),
             SourceButton("b", "B", 0x00000004, ControllerPacket.B_FLAG),
@@ -82,17 +100,21 @@ object Switch2ControllerMappings {
             SourceButton("dpad_down", "D-pad Down", 0x00010000, ControllerPacket.DOWN_FLAG),
             SourceButton("dpad_left", "D-pad Left", 0x00080000, ControllerPacket.LEFT_FLAG),
             SourceButton("dpad_right", "D-pad Right", 0x00040000, ControllerPacket.RIGHT_FLAG),
-            SourceButton(SOURCE_GL, "GL", rawMaskFor(prefs, address, SOURCE_GL), TARGET_NONE, editableRawMask = true),
-            SourceButton(SOURCE_GR, "GR", rawMaskFor(prefs, address, SOURCE_GR), TARGET_NONE, editableRawMask = true),
+            SourceButton(SOURCE_GL, "GL", glMask, TARGET_NONE, editableRawMask = true),
+            SourceButton(SOURCE_GR, "GR", grMask, TARGET_NONE, editableRawMask = true),
         )
     }
 
     fun mapButtons(context: Context, address: String, rawButtons: Int): Int {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
         var mappedFlags = 0
         for (source in sourceButtons(context, address)) {
             if (source.rawMask != 0 && (rawButtons and source.rawMask) != 0) {
-                val value = prefs.getInt(mappingKey(address, source.id), TARGET_DEFAULT)
+                val value = when {
+                    s2.contains(mappingKey(address, source.id)) -> s2.getInt(mappingKey(address, source.id), TARGET_DEFAULT)
+                    else -> ble.getInt(mappingKey(address, source.id), TARGET_DEFAULT)
+                }
                 mappedFlags = mappedFlags or if (value == TARGET_DEFAULT) source.defaultTarget else value
             }
         }
@@ -106,34 +128,65 @@ object Switch2ControllerMappings {
     }
 
     fun targetFor(context: Context, address: String, source: SourceButton): Int {
-        val value = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(mappingKey(address, source.id), TARGET_DEFAULT)
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        val value = when {
+            s2.contains(mappingKey(address, source.id)) -> s2.getInt(mappingKey(address, source.id), TARGET_DEFAULT)
+            else -> ble.getInt(mappingKey(address, source.id), TARGET_DEFAULT)
+        }
         return if (value == TARGET_DEFAULT) source.defaultTarget else value
     }
 
     fun setTarget(context: Context, address: String, sourceId: String, targetFlag: Int) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(mappingKey(address, sourceId), targetFlag)
-            .apply()
+        getS2Prefs(context).edit().putInt(mappingKey(address, sourceId), targetFlag).apply()
+        getBlePrefs(context).edit().putInt(mappingKey(address, sourceId), targetFlag).apply()
     }
 
     fun setRawMask(context: Context, address: String, sourceId: String, rawMask: Int) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(rawMaskKey(address, sourceId), rawMask)
-            .apply()
+        getS2Prefs(context).edit().putInt(rawMaskKey(address, sourceId), rawMask).apply()
+        getBlePrefs(context).edit().putInt(rawMaskKey(address, sourceId), rawMask).apply()
     }
 
     const val PREF_PAIRED_BLE_CONTROLLER = "paired_ble_controller_mac"
 
     fun getPairedControllers(context: Context): List<String> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val saved = prefs.getStringSet(PREF_PAIRED_CONTROLLERS, emptySet()).orEmpty()
-            .filter { it.isNotBlank() }
-            .sorted()
-        val legacy = prefs.getString(PREF_PAIRED_BLE_CONTROLLER, null)
-        return (saved + listOfNotNull(legacy)).distinct()
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        val result = mutableListOf<String>()
+
+        // 1. Check comma-separated string or Set in switch2_controller_prefs
+        try {
+            val str = s2.getString(PREF_PAIRED_CONTROLLERS, null)
+            if (!str.isNullOrBlank()) {
+                result.addAll(str.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+            }
+        } catch (_: Exception) {
+            try {
+                val set = s2.getStringSet(PREF_PAIRED_CONTROLLERS, null)
+                if (set != null) result.addAll(set.filter { it.isNotBlank() })
+            } catch (_: Exception) {}
+        }
+
+        // 2. Check comma-separated string or Set in ble_prefs
+        try {
+            val str = ble.getString(PREF_PAIRED_CONTROLLERS, null)
+            if (!str.isNullOrBlank()) {
+                result.addAll(str.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+            }
+        } catch (_: Exception) {
+            try {
+                val set = ble.getStringSet(PREF_PAIRED_CONTROLLERS, null)
+                if (set != null) result.addAll(set.filter { it.isNotBlank() })
+            } catch (_: Exception) {}
+        }
+
+        // 3. Check legacy key
+        val legacy1 = s2.getString(PREF_PAIRED_BLE_CONTROLLER, null)
+        val legacy2 = ble.getString(PREF_PAIRED_BLE_CONTROLLER, null)
+        if (!legacy1.isNullOrBlank()) result.add(legacy1.trim())
+        if (!legacy2.isNullOrBlank()) result.add(legacy2.trim())
+
+        return result.distinct().filter { it.isNotBlank() }
     }
 
     fun addPairedController(
@@ -142,39 +195,67 @@ object Switch2ControllerMappings {
         name: String?,
         productId: Int = PRODUCT_PRO_CONTROLLER_2,
     ) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val controllers = getPairedControllers(context).toMutableSet()
-        controllers.add(address)
-        prefs.edit()
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        val current = getPairedControllers(context).toMutableList()
+        if (!current.contains(address)) {
+            current.add(address)
+        }
+        val csv = current.joinToString(",")
+        val ctrlName = name ?: controllerNameForProduct(productId)
+
+        s2.edit()
+            .putString(PREF_PAIRED_CONTROLLERS, csv)
+            .putString(nameKey(address), ctrlName)
+            .putInt(productIdKey(address), productId)
+            .apply()
+
+        ble.edit()
             .putString(PREF_PAIRED_BLE_CONTROLLER, address)
-            .putStringSet(PREF_PAIRED_CONTROLLERS, controllers)
-            .putString(nameKey(address), name ?: controllerNameForProduct(productId))
+            .putStringSet(PREF_PAIRED_CONTROLLERS, current.toSet())
+            .putString(nameKey(address), ctrlName)
             .putInt(productIdKey(address), productId)
             .apply()
     }
 
     fun removePairedController(context: Context, address: String) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val controllers = getPairedControllers(context).filter { it != address }.toSet()
-        val editor = prefs.edit()
-            .putStringSet(PREF_PAIRED_CONTROLLERS, controllers)
+        val current = getPairedControllers(context).filter { it != address }
+        val csv = current.joinToString(",")
+        getS2Prefs(context).edit()
+            .putString(PREF_PAIRED_CONTROLLERS, csv)
             .remove(nameKey(address))
             .remove(productIdKey(address))
-        if (prefs.getString(PREF_PAIRED_BLE_CONTROLLER, null) == address) {
-            editor.putString(PREF_PAIRED_BLE_CONTROLLER, controllers.firstOrNull())
+            .apply()
+
+        val bleEditor = getBlePrefs(context).edit()
+            .putStringSet(PREF_PAIRED_CONTROLLERS, current.toSet())
+            .remove(nameKey(address))
+            .remove(productIdKey(address))
+        if (getBlePrefs(context).getString(PREF_PAIRED_BLE_CONTROLLER, null) == address) {
+            bleEditor.putString(PREF_PAIRED_BLE_CONTROLLER, current.firstOrNull())
         }
-        editor.apply()
+        bleEditor.apply()
     }
 
     fun controllerName(context: Context, address: String): String {
         val productId = controllerProductId(context, address)
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(nameKey(address), null) ?: controllerNameForProduct(productId)
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        return when {
+            s2.contains(nameKey(address)) -> s2.getString(nameKey(address), null)
+            ble.contains(nameKey(address)) -> ble.getString(nameKey(address), null)
+            else -> null
+        } ?: controllerNameForProduct(productId)
     }
 
     fun controllerProductId(context: Context, address: String): Int {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(productIdKey(address), PRODUCT_PRO_CONTROLLER_2)
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        return when {
+            s2.contains(productIdKey(address)) -> s2.getInt(productIdKey(address), PRODUCT_PRO_CONTROLLER_2)
+            ble.contains(productIdKey(address)) -> ble.getInt(productIdKey(address), PRODUCT_PRO_CONTROLLER_2)
+            else -> PRODUCT_PRO_CONTROLLER_2
+        }
     }
 
     fun isSupportedProductId(productId: Int): Boolean {
@@ -203,32 +284,42 @@ object Switch2ControllerMappings {
     }
 
     fun combineJoyCons(context: Context): Boolean {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(PREF_COMBINE_JOYCONS, true)
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        return when {
+            s2.contains(PREF_COMBINE_JOYCONS) -> s2.getBoolean(PREF_COMBINE_JOYCONS, true)
+            ble.contains(PREF_COMBINE_JOYCONS) -> ble.getBoolean(PREF_COMBINE_JOYCONS, true)
+            else -> true
+        }
     }
 
     fun setCombineJoyCons(context: Context, combine: Boolean) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(PREF_COMBINE_JOYCONS, combine)
-            .apply()
+        getS2Prefs(context).edit().putBoolean(PREF_COMBINE_JOYCONS, combine).apply()
+        getBlePrefs(context).edit().putBoolean(PREF_COMBINE_JOYCONS, combine).apply()
     }
 
     fun stickSensitivity(context: Context, address: String): Float {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getFloat(sensitivityKey(address), 1.30f)
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        return when {
+            s2.contains(sensitivityKey(address)) -> s2.getFloat(sensitivityKey(address), 1.30f)
+            ble.contains(sensitivityKey(address)) -> ble.getFloat(sensitivityKey(address), 1.30f)
+            else -> 1.30f
+        }
     }
 
     fun setStickSensitivity(context: Context, address: String, sensitivity: Float) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putFloat(sensitivityKey(address), sensitivity)
-            .apply()
+        getS2Prefs(context).edit().putFloat(sensitivityKey(address), sensitivity).apply()
+        getBlePrefs(context).edit().putFloat(sensitivityKey(address), sensitivity).apply()
     }
 
     fun rawMaskText(context: Context, address: String, sourceId: String): String {
-        val value = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(rawMaskKey(address, sourceId), 0)
+        val s2 = getS2Prefs(context)
+        val ble = getBlePrefs(context)
+        val value = when {
+            s2.contains(rawMaskKey(address, sourceId)) -> s2.getInt(rawMaskKey(address, sourceId), 0)
+            else -> ble.getInt(rawMaskKey(address, sourceId), 0)
+        }
         return if (value == 0) "" else "0x${value.toUInt().toString(16)}"
     }
 
@@ -240,10 +331,6 @@ object Switch2ControllerMappings {
         } else {
             trimmed.toUInt(16).toInt()
         }
-    }
-
-    private fun rawMaskFor(prefs: android.content.SharedPreferences, address: String, sourceId: String): Int {
-        return prefs.getInt(rawMaskKey(address, sourceId), 0)
     }
 
     private fun mappingKey(address: String, sourceId: String): String {
@@ -268,3 +355,4 @@ object Switch2ControllerMappings {
 
     private fun String.safeKey(): String = replace(":", "").lowercase()
 }
+
