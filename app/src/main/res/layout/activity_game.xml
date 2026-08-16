@@ -124,6 +124,7 @@
         android:background="@android:color/black"
         android:visibility="gone"
         android:elevation="10000dp"
+        app:surface_type="texture_view"
         app:use_controller="false"
         app:resize_mode="fill" />
 

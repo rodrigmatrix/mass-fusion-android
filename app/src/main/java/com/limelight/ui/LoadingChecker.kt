@@ -43,6 +43,13 @@ object LoadingChecker {
                 exoPlayer.setMediaItem(mediaItem)
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
+                
+                exoPlayer.addListener(object : Player.Listener {
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        hideAndRelease()
+                    }
+                })
+                
                 player = exoPlayer
 
                 loadingVideoActive = true

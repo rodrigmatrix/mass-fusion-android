@@ -365,18 +365,26 @@ class AppView : AppCompatActivity() {
         managerBinder?.let { unbindService(serviceConnection) }
     }
 
+    override fun onStart() {
+        super.onStart()
+        inForeground = true
+        startComputerUpdates()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        inForeground = false
+        stopComputerUpdates()
+    }
+
     override fun onResume() {
         super.onResume()
         UiHelper.showDecoderCrashDialog(this)
-        inForeground = true
-        startComputerUpdates()
         activeProfileName = ProfilesManager.getInstance().activeName
     }
 
     override fun onPause() {
         super.onPause()
-        inForeground = false
-        stopComputerUpdates()
     }
 
     private fun updateUiWithServerinfo(details: ComputerDetails) {

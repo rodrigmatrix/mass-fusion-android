@@ -69,6 +69,8 @@ public class KeyboardTranslator implements InputManager.InputDeviceListener {
     public static final int VK_G = 71;
     public static final int VK_V = 86;
     public static final int VK_Q = 81;
+    public static final int VK_W = 87;
+    public static final int VK_E = 69;
 
     public static final int VK_S = 83;
 

@@ -195,15 +195,16 @@ public class ComputerManagerService extends Service {
     }
 
     public class ComputerManagerBinder extends Binder {
+        public void triggerDiscovery() {
+            discoveryBinder.startDiscovery(MDNS_QUERY_PERIOD_MS);
+        }
+
         public void startPolling(ComputerManagerListener listener) {
             // Polling is active
             pollingActive = true;
 
             // Set the listener
             ComputerManagerService.this.listener = listener;
-
-            // Start mDNS autodiscovery too
-            discoveryBinder.startDiscovery(MDNS_QUERY_PERIOD_MS);
 
             synchronized (pollingTuples) {
                 for (PollingTuple tuple : pollingTuples) {

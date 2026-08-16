@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
 import com.limelight.binding.PlatformBinding
 import com.limelight.binding.crypto.AndroidCryptoProvider
-import com.limelight.binding.input.driver.Switch2ControllersActivity
 import com.limelight.computers.ComputerManagerListener
 import com.limelight.computers.ComputerManagerService
 import com.limelight.grid.assets.CachedAppAssetLoader
@@ -198,8 +197,11 @@ class PcView : AppCompatActivity() {
                     activeProfileName = activeProfileName,
                     onProfilesClick = { startActivity(Intent(this, ProfilesActivity::class.java)) },
                     onSettingsClick = { startActivity(Intent(this, StreamSettings::class.java)) },
-                    onControllerClick = { startActivity(Intent(this, Switch2ControllersActivity::class.java)) },
+                    onControllerClick = {
+                        startActivity(Intent().setComponent(ComponentName(this, "com.switch2.controllers.ui.Switch2ControllersActivity")))
+                    },
                     onAddPcClick = { startActivity(Intent(this, AddComputerManually::class.java)) },
+                    onScanClick = { managerBinder?.triggerDiscovery() },
                     onHelpClick = { HelpLauncher.launchSetupGuide(this) },
                     onPcClick = { pc -> handlePcClick(pc) },
                     onPcAction = { pc, action -> handlePcAction(pc, action) },
@@ -258,24 +260,28 @@ class PcView : AppCompatActivity() {
         if (managerBinder != null) unbindService(serviceConnection)
     }
 
+    override fun onStart() {
+        super.onStart()
+        inForeground = true
+        startComputerUpdates()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        inForeground = false
+        stopComputerUpdates(false)
+        Dialog.closeDialogs()
+    }
+
     override fun onResume() {
         super.onResume()
         UiHelper.showDecoderCrashDialog(this)
         activeProfileName = ProfilesManager.getInstance().activeName
-        inForeground = true
-        startComputerUpdates()
         refreshHomeDataAfterResume()
     }
 
     override fun onPause() {
         super.onPause()
-        inForeground = false
-        stopComputerUpdates(false)
-    }
-
-    override fun onStop() {
-        super.onStop()
-        Dialog.closeDialogs()
     }
 
     enum class PcAction {
@@ -732,6 +738,7 @@ fun PcScreen(
     onSettingsClick: () -> Unit,
     onControllerClick: () -> Unit,
     onAddPcClick: () -> Unit,
+    onScanClick: () -> Unit,
     onHelpClick: () -> Unit,
     onPcClick: (PcView.ComputerObject) -> Unit,
     onPcAction: (PcView.ComputerObject, PcView.PcAction) -> Unit,
@@ -768,6 +775,9 @@ fun PcScreen(
                             },
                             modifier = Modifier.scale(0.8f)
                         )
+                    }
+                    IconButton(onClick = onScanClick) {
+                        Image(painterResource(android.R.drawable.ic_menu_search), "Scan Network")
                     }
                     IconButton(onClick = onAddPcClick) {
                         Image(painterResource(R.drawable.ic_add), "Add PC")

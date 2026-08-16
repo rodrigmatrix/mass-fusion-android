@@ -1,21 +1,17 @@
-# Artemis Android
+# Mass Fusion Android
 
-Previously named Moonlight Noir
+An open source high-performance game streaming client for [Apollo](https://github.com/ClassicOldSong/Apollo) and [Sunshine](https://github.com/LizardByte/Sunshine).
 
-An open source client for [Apollo](https://github.com/ClassicOldSong/Apollo)/[Sunshine](https://github.com/LizardByte/Sunshine).
+**Mass Fusion** is a fork of [Artemis](https://github.com/ClassicOldSong/moonlight-android) (Moonlight Noir) that adds native, low-latency support for **Nintendo Switch 2 Controllers** (Pro Controller 2, Joy-Con 2 Left & Right, Joy-Con pairs, button mapping, and stick calibration) powered by the standalone [`switch-2-controllers-android`](https://github.com/rodrigmatrix/switch-2-controllers-android) library.
 
-Artemis Android will allow you to stream your collection of games from your Windows PC to your Android device,
-whether in your own home or over the internet.
-
-Artemis is currently the best fork of Moonlight with loads of optimizations for office usage.
-
-A more seamless experience with virtual display will be Artemis paired with [Apollo](https://github.com/ClassicOldSong/Apollo).
+Mass Fusion allows you to stream your collection of games from your PC to your Android device, whether at home or on the go.
 
 # Features
 
 If you switch back to the main stream version, you'll be missing the following awesome features which are very unlikely to be added there:
 
-1. Custom virtual buttons with import and export support.
+1. **Nintendo Switch 2 Controller Support**: Native low-latency Bluetooth driver for Switch 2 Pro Controllers and Joy-Con 2 (L/R pairs, stick calibration, custom button remapping) powered by [`switch-2-controllers-android`](https://github.com/rodrigmatrix/switch-2-controllers-android).
+2. Custom virtual buttons with import and export support.
 2. [Custom resolutions](https://github.com/moonlight-stream/moonlight-android/pull/1349).
 3. Custom bitrates.
 4. [Multiple mouse mode switching](https://github.com/moonlight-stream/moonlight-android/pull/1304) (normal mouse, [multi-touch](https://github.com/moonlight-stream/moonlight-android/pull/1364), touchpad, disabled, local cursor mode).

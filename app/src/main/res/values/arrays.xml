@@ -200,4 +200,21 @@
         <item>right</item>
     </string-array>
 
+    <string-array name="app_theme_names">
+        <item>@string/theme_system_dynamic</item>
+        <item>@string/theme_expressive_default</item>
+        <item>@string/theme_crimson_red</item>
+        <item>@string/theme_forest_green</item>
+        <item>@string/theme_ocean_blue</item>
+        <item>@string/theme_royal_purple</item>
+    </string-array>
+
+    <string-array name="app_theme_values" translatable="false">
+        <item>system_dynamic</item>
+        <item>expressive_default</item>
+        <item>crimson_red</item>
+        <item>forest_green</item>
+        <item>ocean_blue</item>
+        <item>royal_purple</item>
+    </string-array>
 </resources>

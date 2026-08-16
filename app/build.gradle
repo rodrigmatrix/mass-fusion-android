@@ -13,7 +13,7 @@ android {
         minSdk 26
         targetSdk 37
 
-        versionName "20.2.6"
+        versionName "20.2.7"
         versionCode = 57
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
@@ -91,6 +91,9 @@ android {
     }
 
     packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             pickFirsts.add('META-INF/versions/9/OSGI-INF/MANIFEST.MF')
         }
@@ -170,6 +173,7 @@ android {
 }
 
 dependencies {
+    implementation files('libs/switch2controllers-debug.aar')
     implementation 'org.bouncycastle:bcprov-jdk18on:1.84'
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.84'
     implementation 'org.jcodec:jcodec:0.2.5'

@@ -46,3 +46,7 @@
 # MPAndroidChart
 -keep class com.github.mikephil.charting.** { *; }
 -dontwarn com.github.mikephil.charting.**
+
+# Switch 2 Controllers Library
+-keep class com.switch2.controllers.** { *; }
+-keep interface com.switch2.controllers.** { *; }

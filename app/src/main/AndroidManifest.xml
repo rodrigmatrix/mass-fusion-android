@@ -17,6 +17,8 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+                     android:usesPermissionFlags="neverForLocation" />
     <!-- We don't need a MulticastLock on API level 34+ because we use NsdManager for mDNS -->
     <uses-permission
         android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"
@@ -233,18 +235,6 @@
         <service
             android:name=".binding.input.driver.BleDriverService"
             android:label="Ble Driver Service" />
-        <activity
-            android:name=".binding.input.driver.BlePairingActivity"
-            android:theme="@style/SettingsTheme"
-            android:label="@string/title_pair_pro_controller" />
-        <activity
-            android:name=".binding.input.driver.Switch2ControllersActivity"
-            android:theme="@style/SettingsTheme"
-            android:label="@string/title_switch2_controllers" />
-        <activity
-            android:name=".binding.input.driver.Switch2ControllerSettingsActivity"
-            android:theme="@style/SettingsTheme"
-            android:label="@string/title_switch2_controller_settings" />
 
         <activity
             android:name=".HelpActivity"

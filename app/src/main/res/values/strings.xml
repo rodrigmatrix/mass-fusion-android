@@ -627,6 +627,8 @@
     <string name="pref_error_occurred">An error occurred: </string>
     <string name="pref_save_keyboard_profile">Save OSK profile</string>
     <string name="game_menu_advanced">Advanced Menu</string>
+    <string name="game_menu_edit_gamepad_layout">Edit Gamepad Layout</string>
+    <string name="game_menu_select_osc_profile">Select OSC Profile</string>
     <string name="game_dialog_title_quit_confirm">Really want to quit?</string>
     <string name="game_dialog_message_quit_confirm">Please make sure you have no unsaved progress. Quitting the session will terminate your current running application.</string>
     <string name="game_menu_quit_session">Quit Session</string>
@@ -735,4 +737,13 @@
 
     <string name="title_checkbox_full_screen">Enable Full Screen</string>
     <string name="summary_checkbox_full_screen">Hide system bars with immersive mode</string>
+
+    <string name="title_app_theme">App Theme</string>
+    <string name="summary_app_theme">Choose the color palette for modern screens</string>
+    <string name="theme_system_dynamic">System Dynamic</string>
+    <string name="theme_expressive_default">Expressive Default</string>
+    <string name="theme_crimson_red">Crimson Red</string>
+    <string name="theme_forest_green">Forest Green</string>
+    <string name="theme_ocean_blue">Ocean Blue</string>
+    <string name="theme_royal_purple">Royal Purple</string>
 </resources>

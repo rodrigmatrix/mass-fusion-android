@@ -863,7 +863,8 @@ public class StreamSettings extends AppCompatActivity {
                 _pref.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
                     @Override
                     public boolean onPreferenceClick(@NonNull Preference preference) {
-                        Intent intent = new Intent(requireActivity(), com.limelight.binding.input.driver.Switch2ControllersActivity.class);
+                        Intent intent = new Intent();
+                        intent.setComponent(new android.content.ComponentName(requireActivity(), "com.switch2.controllers.ui.Switch2ControllersActivity"));
                         requireActivity().startActivity(intent);
                         return false;
                     }
@@ -988,7 +989,7 @@ public class StreamSettings extends AppCompatActivity {
             reloadSettings();
         }
 
-        protected void reloadSettings() {
+        public void reloadSettings() {
             // HACK: We need to let the preference change succeed before reinitializing to ensure
             // it's reflected in the new layout.
             final Handler h = new Handler();

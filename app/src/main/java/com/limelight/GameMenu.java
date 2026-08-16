@@ -16,6 +16,8 @@ import android.widget.Toast;
 
 import com.limelight.binding.input.GameInputDevice;
 import com.limelight.binding.input.KeyboardTranslator;
+import com.limelight.binding.input.virtual_controller.VirtualControllerState;
+import com.limelight.binding.input.virtual_controller.keyboard.KeyBoardControllerConfigurationLoader;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.utils.KeyConfigHelper;
 import com.limelight.utils.KeyMapper;
@@ -253,6 +255,14 @@ public class GameMenu implements Game.GameMenuCallbacks {
         options.add(new MenuOption(getString(R.string.game_menu_toggle_keyboard_model), true, game::toggleKeyboardController));
         if (!game.isOnExternalDisplay()) {
             options.add(new MenuOption(getString(R.string.game_menu_toggle_virtual_model), true, game::toggleVirtualController));
+            options.add(new MenuOption(getString(R.string.game_menu_edit_gamepad_layout), () -> {
+                hideMenu();
+                VirtualControllerState.enableEditMode();
+            }));
+            options.add(new MenuOption(getString(R.string.game_menu_select_osc_profile), () -> {
+                hideMenu();
+                VirtualControllerState.showProfileSelection();
+            }));
         }
         options.add(new MenuOption(getString(R.string.game_menu_toggle_virtual_keyboard_model), true, game::toggleFullKeyboard));
         options.add(new MenuOption(getString(R.string.game_menu_task_manager), true, () -> sendKeys(new short[]{KeyboardTranslator.VK_LCONTROL, KeyboardTranslator.VK_LSHIFT, KeyboardTranslator.VK_ESCAPE})));

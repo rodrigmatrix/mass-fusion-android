@@ -53,8 +53,16 @@ class ProConBleDriver(
     private var lastLoggedLeftStickY = Float.NaN
     private var lastLoggedRightStickX = Float.NaN
     private var lastLoggedRightStickY = Float.NaN
+    private var leftCenter = intArrayOf(2048, 2048)
+    private var leftMax = intArrayOf(1500, 1500)
+    private var leftMin = intArrayOf(1500, 1500)
+    private var rightCenter = intArrayOf(2048, 2048)
+    private var rightMax = intArrayOf(1500, 1500)
+    private var rightMin = intArrayOf(1500, 1500)
+    private var sensitivityMultiplier = 1.30f
 
     init {
+        sensitivityMultiplier = Switch2ControllerMappings.stickSensitivity(context, address)
         type = MoonBridge.LI_CTYPE_NINTENDO
         capabilities = (
             MoonBridge.LI_CCAP_GYRO.toInt() or
@@ -108,8 +116,11 @@ class ProConBleDriver(
             frame.copyInto(motorVibrations, destinationOffset = 1 + frame.size)
             frame.copyInto(motorVibrations, destinationOffset = 1 + frame.size * 2)
             
-            // JoyCons expect exactly 16 bytes on their dedicated characteristics
-            motorVibrations
+            // JoyCons expect a 1 byte prefix (0x00) + the 16 byte motor vibrations
+            ByteArray(1 + motorVibrations.size).also {
+                it[0] = 0x00
+                motorVibrations.copyInto(it, destinationOffset = 1)
+            }
         } else {
             val leftFrame = buildVibrationFrame(lowAmplitude, lowAmplitude)
             val rightFrame = buildVibrationFrame(highAmplitude, highAmplitude)
@@ -134,7 +145,12 @@ class ProConBleDriver(
             }
         }
 
-        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        characteristic.writeType =
+            if ((characteristic.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            } else {
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            }
         characteristic.value = payload
         if (!activeGatt.writeCharacteristic(characteristic)) {
             LimeLog.warning("${driverName()}: Rumble write failed to start")
@@ -199,6 +215,30 @@ class ProConBleDriver(
     @Synchronized
     private fun onCommandResponse(response: ByteArray) {
         LimeLog.info("${driverName()}: Command response received (${response.size} bytes)")
+        
+        if (response.size >= 25 && response[0] == COMMAND_MEMORY.toByte() && response[8] == 0x0b.toByte()) {
+            val buf = ByteBuffer.wrap(response).order(ByteOrder.LITTLE_ENDIAN)
+            val address = buf.getInt(12)
+            
+            val c = intArrayOf(readStick24(buf, 16) and 0xfff, readStick24(buf, 16) ushr 12)
+            val max = intArrayOf(readStick24(buf, 19) and 0xfff, readStick24(buf, 19) ushr 12)
+            val min = intArrayOf(readStick24(buf, 22) and 0xfff, readStick24(buf, 22) ushr 12)
+            
+            if (c[0] != 0 && c[0] != 0xfff && max[0] != 0 && max[0] != 0xfff) {
+                if (address == CALIBRATION_JOYSTICK_L) {
+                    leftCenter = c
+                    leftMax = max
+                    leftMin = min
+                    LimeLog.info("${driverName()}: Left stick calibration loaded: center=(${c[0]},${c[1]}) max=(${max[0]},${max[1]}) min=(${min[0]},${min[1]})")
+                } else if (address == CALIBRATION_JOYSTICK_R) {
+                    rightCenter = c
+                    rightMax = max
+                    rightMin = min
+                    LimeLog.info("${driverName()}: Right stick calibration loaded: center=(${c[0]},${c[1]}) max=(${max[0]},${max[1]}) min=(${min[0]},${min[1]})")
+                }
+            }
+        }
+        
         awaitingResponse = false
         if (commandQueue.isNotEmpty()) {
             Handler(Looper.getMainLooper()).postDelayed({ sendNextCommand() }, 50L)
@@ -357,6 +397,29 @@ class ProConBleDriver(
     }
 
     private fun sendInitSequence() {
+        enqueueCommand(
+            COMMAND_MEMORY,
+            SUBCOMMAND_MEMORY_READ,
+            byteArrayOf(
+                0x0b, 0x7e, 0x00, 0x00,
+                (CALIBRATION_JOYSTICK_L and 0xff).toByte(),
+                ((CALIBRATION_JOYSTICK_L shr 8) and 0xff).toByte(),
+                ((CALIBRATION_JOYSTICK_L shr 16) and 0xff).toByte(),
+                ((CALIBRATION_JOYSTICK_L shr 24) and 0xff).toByte(),
+            )
+        )
+        enqueueCommand(
+            COMMAND_MEMORY,
+            SUBCOMMAND_MEMORY_READ,
+            byteArrayOf(
+                0x0b, 0x7e, 0x00, 0x00,
+                (CALIBRATION_JOYSTICK_R and 0xff).toByte(),
+                ((CALIBRATION_JOYSTICK_R shr 8) and 0xff).toByte(),
+                ((CALIBRATION_JOYSTICK_R shr 16) and 0xff).toByte(),
+                ((CALIBRATION_JOYSTICK_R shr 24) and 0xff).toByte(),
+            )
+        )
+
         val setMacPayload = byteArrayOf(
             0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -399,18 +462,18 @@ class ProConBleDriver(
         if (Switch2ControllerMappings.isJoyConRight(productId)) {
             leftStickX = 0f
             leftStickY = 0f
-            rightStickX = stickAxisX(rsRaw)
-            rightStickY = stickAxisY(rsRaw)
+            rightStickX = stickAxis(rsRaw and 0xfff, rightCenter[0], rightMax[0], rightMin[0], false)
+            rightStickY = stickAxis((rsRaw ushr 12) and 0xfff, rightCenter[1], rightMax[1], rightMin[1], true)
         } else if (Switch2ControllerMappings.isJoyConLeft(productId)) {
-            leftStickX = stickAxisX(lsRaw)
-            leftStickY = stickAxisY(lsRaw)
+            leftStickX = stickAxis(lsRaw and 0xfff, leftCenter[0], leftMax[0], leftMin[0], false)
+            leftStickY = stickAxis((lsRaw ushr 12) and 0xfff, leftCenter[1], leftMax[1], leftMin[1], true)
             rightStickX = 0f
             rightStickY = 0f
         } else {
-            leftStickX = stickAxisX(lsRaw)
-            leftStickY = stickAxisY(lsRaw)
-            rightStickX = stickAxisX(rsRaw)
-            rightStickY = stickAxisY(rsRaw)
+            leftStickX = stickAxis(lsRaw and 0xfff, leftCenter[0], leftMax[0], leftMin[0], false)
+            leftStickY = stickAxis((lsRaw ushr 12) and 0xfff, leftCenter[1], leftMax[1], leftMin[1], true)
+            rightStickX = stickAxis(rsRaw and 0xfff, rightCenter[0], rightMax[0], rightMin[0], false)
+            rightStickY = stickAxis((rsRaw ushr 12) and 0xfff, rightCenter[1], rightMax[1], rightMin[1], true)
         }
 
         logRawButtonChanges(buttons)
@@ -570,9 +633,20 @@ class ProConBleDriver(
             ((buf.get(offset + 2).toInt() and 0xff) shl 16)
     }
 
-    private fun stickAxisX(raw: Int): Float = ((raw and 0xfff) - 2048) / 2048.0f
-
-    private fun stickAxisY(raw: Int): Float = -(((raw shr 12) and 0xfff) - 2048) / 2048.0f
+    private fun stickAxis(raw: Int, center: Int, maxAbs: Int, minAbs: Int, invert: Boolean): Float {
+        val signedValue = raw - center
+        var value = if (signedValue > 0) {
+            (signedValue.toFloat() / maxAbs).coerceAtMost(1.0f)
+        } else if (signedValue < 0) {
+            (signedValue.toFloat() / minAbs).coerceAtLeast(-1.0f)
+        } else {
+            0.0f
+        }
+        
+        value = (value * sensitivityMultiplier).coerceIn(-1.0f, 1.0f)
+        
+        return if (invert) -value else value
+    }
 
     private fun driverName(): String {
         return "Switch2BleDriver(${Switch2ControllerMappings.controllerNameForProduct(productId)})"
@@ -615,6 +689,10 @@ class ProConBleDriver(
         private const val DEFAULT_HIGH_FREQUENCY = 0x1e1
         private const val MAX_SWITCH_RUMBLE_AMPLITUDE = 800
 
+        private const val COMMAND_MEMORY = 0x02
+        private const val SUBCOMMAND_MEMORY_READ = 0x04
+        private const val CALIBRATION_JOYSTICK_L = 0x0130A8
+        private const val CALIBRATION_JOYSTICK_R = 0x0130E8
         private const val COMMAND_LEDS = 0x09
         private const val SUBCOMMAND_LEDS_SET_PLAYER = 0x07
         private const val COMMAND_FEATURE = 0x0c

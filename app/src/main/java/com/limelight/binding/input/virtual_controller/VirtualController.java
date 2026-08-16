@@ -11,6 +11,7 @@ import android.widget.FrameLayout;
 
 import com.limelight.LimeLog;
 import com.limelight.binding.input.ControllerHandler;
+import com.limelight.nvstream.NvConnection;
 import com.limelight.preferences.PreferenceConfiguration;
 import androidx.compose.ui.platform.ComposeView;
 
@@ -51,11 +52,13 @@ public class VirtualController {
     ControllerMode currentMode = ControllerMode.Active;
     ControllerInputContext inputContext = new ControllerInputContext();
 
-    private Vibrator vibrator;
+    private final Vibrator vibrator;
     private final VibrationEffect defaultVibrationEffect;
+    private final NvConnection conn;
 
-    public VirtualController(final ControllerHandler controllerHandler, FrameLayout layout, final Context context) {
+    public VirtualController(final ControllerHandler controllerHandler, final NvConnection conn, FrameLayout layout, final Context context) {
         this.controllerHandler = controllerHandler;
+        this.conn = conn;
         this.frame_layout = layout;
         this.context = context;
         this.handler = new Handler(Looper.getMainLooper());
@@ -163,5 +166,29 @@ public class VirtualController {
 
     public void sendControllerInputContext() {
         sendControllerInputContext(0, 0);
+    }
+
+    public void sendKeyboardInput(short keyCode, byte keyDirection, byte modifier, byte flags) {
+        if (conn != null) {
+            conn.sendKeyboardInput(keyCode, keyDirection, modifier, flags);
+        }
+    }
+
+    public void sendMouseMove(short deltaX, short deltaY) {
+        if (conn != null) {
+            conn.sendMouseMove(deltaX, deltaY);
+        }
+    }
+
+    public void sendMouseButtonDown(byte mouseButton) {
+        if (conn != null) {
+            conn.sendMouseButtonDown(mouseButton);
+        }
+    }
+
+    public void sendMouseButtonUp(byte mouseButton) {
+        if (conn != null) {
+            conn.sendMouseButtonUp(mouseButton);
+        }
     }
 }

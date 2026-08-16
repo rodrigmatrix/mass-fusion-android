@@ -125,12 +125,14 @@ object Switch2ControllerMappings {
             .apply()
     }
 
+    const val PREF_PAIRED_BLE_CONTROLLER = "paired_ble_controller_mac"
+
     fun getPairedControllers(context: Context): List<String> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val saved = prefs.getStringSet(PREF_PAIRED_CONTROLLERS, emptySet()).orEmpty()
             .filter { it.isNotBlank() }
             .sorted()
-        val legacy = prefs.getString(BlePairingActivity.PREF_PAIRED_BLE_CONTROLLER, null)
+        val legacy = prefs.getString(PREF_PAIRED_BLE_CONTROLLER, null)
         return (saved + listOfNotNull(legacy)).distinct()
     }
 
@@ -144,7 +146,7 @@ object Switch2ControllerMappings {
         val controllers = getPairedControllers(context).toMutableSet()
         controllers.add(address)
         prefs.edit()
-            .putString(BlePairingActivity.PREF_PAIRED_BLE_CONTROLLER, address)
+            .putString(PREF_PAIRED_BLE_CONTROLLER, address)
             .putStringSet(PREF_PAIRED_CONTROLLERS, controllers)
             .putString(nameKey(address), name ?: controllerNameForProduct(productId))
             .putInt(productIdKey(address), productId)
@@ -158,8 +160,8 @@ object Switch2ControllerMappings {
             .putStringSet(PREF_PAIRED_CONTROLLERS, controllers)
             .remove(nameKey(address))
             .remove(productIdKey(address))
-        if (prefs.getString(BlePairingActivity.PREF_PAIRED_BLE_CONTROLLER, null) == address) {
-            editor.putString(BlePairingActivity.PREF_PAIRED_BLE_CONTROLLER, controllers.firstOrNull())
+        if (prefs.getString(PREF_PAIRED_BLE_CONTROLLER, null) == address) {
+            editor.putString(PREF_PAIRED_BLE_CONTROLLER, controllers.firstOrNull())
         }
         editor.apply()
     }
@@ -212,6 +214,18 @@ object Switch2ControllerMappings {
             .apply()
     }
 
+    fun stickSensitivity(context: Context, address: String): Float {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getFloat(sensitivityKey(address), 1.30f)
+    }
+
+    fun setStickSensitivity(context: Context, address: String, sensitivity: Float) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putFloat(sensitivityKey(address), sensitivity)
+            .apply()
+    }
+
     fun rawMaskText(context: Context, address: String, sourceId: String): String {
         val value = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getInt(rawMaskKey(address, sourceId), 0)
@@ -246,6 +260,10 @@ object Switch2ControllerMappings {
 
     private fun productIdKey(address: String): String {
         return "switch2_${address.safeKey()}_product_id"
+    }
+
+    private fun sensitivityKey(address: String): String {
+        return "switch2_${address.safeKey()}_stick_sensitivity"
     }
 
     private fun String.safeKey(): String = replace(":", "").lowercase()

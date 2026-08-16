@@ -534,6 +534,14 @@
         android:title="@string/category_ui_settings"
         app:initialExpandedChildrenCount="3"
         app:iconSpaceReserved="false">
+        <ListPreference
+            android:defaultValue="system_dynamic"
+            android:entries="@array/app_theme_names"
+            android:entryValues="@array/app_theme_values"
+            android:key="list_app_theme"
+            android:summary="@string/summary_app_theme"
+            android:title="@string/title_app_theme"
+            app:iconSpaceReserved="false" />
         <CheckBoxPreference
             android:defaultValue="false"
             android:key="checkbox_resume_without_confirm"

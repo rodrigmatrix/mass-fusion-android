@@ -2,3 +2,5 @@ plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.10.0'
 }
 include ':app'
+include ':switch2controllers'
+project(':switch2controllers').projectDir = new File(settingsDir, '../switch-2-controllers-android/switch2controllers')
