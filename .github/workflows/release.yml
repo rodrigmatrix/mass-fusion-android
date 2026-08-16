@@ -1,0 +1,54 @@
+name: Release APKs
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Release APKs
+        run: ./gradlew assembleNonRoot_gameRelease
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: app/build/outputs/apk/nonRoot_game/release/*.apk
+          name: Mass Fusion Android ${{ github.ref_name }}
+          body: |
+            ## 🚀 Mass Fusion Android with Switch 2 Controllers Support
+
+            ### ✨ What's New
+            - **Native Switch 2 Controllers Support**: Full Bluetooth LE driver for Nintendo Switch Pro Controller 2 and Joy-Con 2 (Left & Right pairs, stick calibration, custom button remapping) powered by [`switch-2-controllers-android`](https://github.com/rodrigmatrix/switch-2-controllers-android).
+            - **Controller Icons & Theming**: Automatic Joy-Con color identification (Blue, Red, Purple, Green) with adaptive dark/light mode theme support.
+            - **Custom Virtual Controllers**: On-screen custom button mapping with import/export profiles.
+          draft: false
+          prerelease: false

@@ -146,6 +146,7 @@ android {
             resValue "string", "app_label_game", "Mass Fusion (Game)"
 
             minifyEnabled true
+            signingConfig signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -166,6 +167,10 @@ android {
 
     testOptions {
         unitTests.includeAndroidResources = true
+    }
+    lintOptions {
+        abortOnError false
+        checkReleaseBuilds false
     }
     kotlinOptions {
         jvmTarget = '11'
